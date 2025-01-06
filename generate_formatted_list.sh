@@ -44,7 +44,7 @@ https://208.67.220.220/dns-query
 [/ali-sh-datareceiver.kurogame.xyz/]61.139.2.69
 [/juequling.com/]61.139.2.69
 [/autopatchcn.juequling.com/]61.139.2.69
-[/epdg.epc.mnc011.mcc460.pub.3gppnetwork.org/]61.139.2.69
+[/3gppnetwork.org/]61.139.2.69
 [/ugreengroup.com/]61.139.2.69
 [/sinilink.com/]61.139.2.69
 [/ug.link/]61.139.2.69
