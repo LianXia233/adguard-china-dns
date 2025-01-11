@@ -30,6 +30,8 @@ https://doh.applied-privacy.net/query
 https://1.0.0.1/dns-query
 https://149.112.112.112/dns-query
 https://208.67.220.220/dns-query
+quic://dns.adguard-dns.com
+tls://dns.adguard-dns.com
 
 [/xoyo.com/]61.139.2.69
 [/calatopia.com/]61.139.2.69
