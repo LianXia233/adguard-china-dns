@@ -33,28 +33,28 @@ https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 
-[/xoyo.com/]61.139.2.69
-[/calatopia.com/]61.139.2.69
-[/kurogames.com/]61.139.2.69
-[/myqcloud.com/]61.139.2.69
-[/wegame.com.cn/]61.139.2.69
-[/xoyocdn.com/]61.139.2.69
-[/cbjq.com/]61.139.2.69
-[/kurogame.xyz/]61.139.2.69
-[/aki-game.com/]61.139.2.69
-[/pcdownload-wangsu.aki-game.com/]61.139.2.69
-[/ali-sh-datareceiver.kurogame.xyz/]61.139.2.69
-[/juequling.com/]61.139.2.69
-[/autopatchcn.juequling.com/]61.139.2.69
-[/3gppnetwork.org/]61.139.2.69
-[/ugreengroup.com/]61.139.2.69
-[/sinilink.com/]61.139.2.69
-[/ug.link/]61.139.2.69
-[/fnnas.com/]61.139.2.69
-[/fnos.net/]61.139.2.69"
+[/xoyo.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/calatopia.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/kurogames.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/myqcloud.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/wegame.com.cn/]119.29.29.29 223.5.5.5 223.6.6.6
+[/xoyocdn.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/cbjq.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/kurogame.xyz/]119.29.29.29 223.5.5.5 223.6.6.6
+[/aki-game.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/pcdownload-wangsu.aki-game.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/ali-sh-datareceiver.kurogame.xyz/]119.29.29.29 223.5.5.5 223.6.6.6
+[/juequling.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/autopatchcn.juequling.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/3gppnetwork.org/]119.29.29.29 223.5.5.5 223.6.6.6
+[/ugreengroup.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/sinilink.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/ug.link/]119.29.29.29 223.5.5.5 223.6.6.6
+[/fnnas.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/fnos.net/]119.29.29.29 223.5.5.5 223.6.6.6"
 
 # IP 地址数组
-ips=("61.139.2.69" "218.6.200.139" "119.29.29.29")
+ips=("119.29.29.29" "223.5.5.5" "223.6.6.6")
 
 # 下载文件函数
 download_file() {
