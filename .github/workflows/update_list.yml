@@ -8,6 +8,9 @@ on:
       - main  # 监听 main 分支的推送事件
   workflow_dispatch:  # 支持手动触发工作流
 
+permissions:
+  contents: write
+
 jobs:
   update-rules:
     runs-on: ubuntu-latest
@@ -51,3 +54,37 @@ jobs:
         }
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 步骤 6: 生成 Release 元数据
+    - name: Prepare release metadata
+      if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
+      run: |
+        echo "TAG_NAME=rules-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+        echo "RELEASE_NAME=AdGuard Home Rules $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_ENV"
+
+    # 步骤 7: 上传规则文件到 Releases
+    - name: Upload rules to release
+      if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.TAG_NAME }}
+        name: ${{ env.RELEASE_NAME }}
+        files: adguard_home_rules.txt
+        body: 自动生成的最新 AdGuard Home 规则文件。
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 步骤 8: 清理历史 Releases，仅保留最新一个
+    - name: Cleanup old releases
+      if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        old_tags=$(gh api "repos/${{ github.repository }}/releases" --jq '.[] | select(.tag_name != env.TAG_NAME) | .tag_name')
+        if [ -n "$old_tags" ]; then
+          for tag in $old_tags; do
+            release_id=$(gh api "repos/${{ github.repository }}/releases/tags/$tag" --jq '.id')
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$release_id"
+            gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag"
+          done
+        fi
