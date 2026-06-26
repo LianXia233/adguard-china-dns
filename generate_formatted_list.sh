@@ -1,24 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # ----------------------------------------------------------------
 # 脚本描述：
 #   自动生成适配 AdGuard Home 的规则文件。
 # ----------------------------------------------------------------
 
-set -e  # 遇到错误立即退出
-set -o pipefail  # 管道中的任意命令失败则脚本退出
+set -euo pipefail  # 遇到错误立即退出；未定义变量报错；管道失败即退出
 
-# 主下载链接
-main_url="https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+downloaded_file="$(mktemp)"
+trap 'rm -f "$downloaded_file"' EXIT
 
-# 备用下载链接
-backup_url="https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
-
-# 下载后的文件保存名称
-downloaded_file="china_list.txt"
+# 下载链接（主/备）
+download_urls=(
+  "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
+  "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
+)
 
 # 输出文件名称
-output_file="adguard_home_rules.txt"
+output_file="$script_dir/adguard_home_rules.txt"
 
 # 固定文本
 fixed_text="https://dns64.dns.google/dns-query
@@ -62,7 +62,7 @@ download_file() {
   local output="$2"
 
   echo "正在尝试下载文件: $url ..."
-  if curl -L --connect-timeout 30 -o "$output" "$url"; then
+  if curl -fsSL --connect-timeout 30 --retry 2 --retry-delay 1 -o "$output" "$url"; then
     echo -e "\n下载完成！"
     return 0
   else
@@ -82,20 +82,19 @@ process_file() {
     exit 1
   fi
 
-  local total_lines=$(wc -l < "$input_file")
-  echo "总行数: $total_lines"
-
   echo "$fixed_text" > "$output_file"
   echo -e "\n\n" >> "$output_file"
 
-  awk -v ips_str="${ips_arr[*]}" -v total_lines="$total_lines" '
+  awk -v ips_str="${ips_arr[*]}" '
   BEGIN {
-      split(ips_str, ips, " ");
+      server_count = split(ips_str, ips, " ");
   }
   {
+      gsub(/\r$/, "", $0);
+      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/) next;
       if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
       printf "[/%s/]", $0;
-      for (i in ips) printf " %s", ips[i];
+      for (i = 1; i <= server_count; i++) printf " %s", ips[i];
       printf "\n";
   }
   END {
@@ -106,22 +105,19 @@ process_file() {
   echo "格式化完成，输出保存到 $output_file"
 }
 
-# 主流程
-# 尝试使用主链接下载文件
-if download_file "$main_url" "$downloaded_file"; then
-    # 下载成功，开始处理文件
-    process_file "$downloaded_file" "$output_file"
-else
-  # 主链接下载失败，尝试备用链接
-  echo "主链接下载失败，正在尝试备用链接..."
-  if download_file "$backup_url" "$downloaded_file"; then
-    # 备用链接下载成功，开始处理文件
-    process_file "$downloaded_file" "$output_file"
-  else
-    # 备用链接也失败，报错并退出
-    echo "备用链接下载也失败，请检查网络连接或 URL。"
-    exit 1
+download_success=false
+for url in "${download_urls[@]}"; do
+  if download_file "$url" "$downloaded_file"; then
+    download_success=true
+    break
   fi
+done
+
+if [[ "$download_success" != "true" ]]; then
+  echo "主/备下载链接均失败，请检查网络连接或 URL。"
+  exit 1
 fi
+
+process_file "$downloaded_file" "$output_file"
 
 exit 0
