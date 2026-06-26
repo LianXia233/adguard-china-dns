@@ -87,14 +87,14 @@ process_file() {
 
   awk -v ips_str="${ips_arr[*]}" '
   BEGIN {
-      ip_count = split(ips_str, ips, " ");
+      server_count = split(ips_str, ips, " ");
   }
   {
       gsub(/\r$/, "", $0);
       if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/) next;
       if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
       printf "[/%s/]", $0;
-      for (i = 1; i <= ip_count; i++) printf " %s", ips[i];
+      for (i = 1; i <= server_count; i++) printf " %s", ips[i];
       printf "\n";
   }
   END {
