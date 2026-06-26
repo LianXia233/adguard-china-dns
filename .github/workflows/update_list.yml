@@ -41,28 +41,14 @@ jobs:
       with:
         files: adguard_home_rules.txt  # 提供正确的文件路径列表
 
-    # 步骤 5: 如果规则文件存在且有更改，则提交并推送
-    - name: Commit and push changes if file exists and changed
-      if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
-      run: |
-        git add adguard_home_rules.txt  # 仅添加规则文件
-        git diff-index --quiet HEAD || {  # 如果文件有更改
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "github-actions@users.noreply.github.com"
-          git commit -m "Update AdGuard Home rules"
-          git push origin main
-        }
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # 步骤 6: 生成 Release 元数据
+    # 步骤 5: 生成 Release 元数据
     - name: Prepare release metadata
       if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
       run: |
         echo "TAG_NAME=rules-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
         echo "RELEASE_NAME=AdGuard Home Rules $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_ENV"
 
-    # 步骤 7: 上传规则文件到 Releases
+    # 步骤 6: 上传规则文件到 Releases
     - name: Upload rules to release
       if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
       uses: softprops/action-gh-release@v2
@@ -74,7 +60,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 步骤 8: 清理历史 Releases，仅保留最新一个
+    # 步骤 7: 清理历史 Releases，仅保留最新一个
     - name: Cleanup old releases
       if: steps.check_file.outputs.files_exists == 'true' && steps.run_script.outcome == 'success'
       env:
