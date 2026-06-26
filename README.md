@@ -1,23 +1,24 @@
 # AdGuard Home 国内外域名DNS分流规则
 
-此仓库提供一个自动生成适配 **AdGuard Home** 的规则文件的脚本。脚本会根据下载的域名列表生成适合的规则，并将其格式化输出。规则根据域名的类型将使用不同的 DNS 服务器配置。
+此仓库提供一个自动生成适配 **AdGuard Home** 的规则文件脚本。脚本会下载域名列表、过滤无效行并生成格式化规则输出；规则根据域名类型使用不同 DNS 服务器配置。
 
 ## 功能描述
 
 - **大陆域名**使用国内 DNS，默认使用四川电信 DNS 和阿里 DNS。
 - **不在列表上的其他域名**使用境外 DNS。
-- 下载域名列表然后生成规则文件。
+- 支持主链接失败后自动回退到备用下载源。
+- 脚本执行结束会自动清理临时下载文件。
 - 生成的规则文件可直接应用于 **AdGuard Home**。
 
 ## 域名规则来源
 
-域名规则来自 [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules) 仓库中的直连域名列表 `direct.txt`。该文件包含了常见的需要直连的域名，将根据这些域名生成适配的 **AdGuard Home** 规则。
+域名规则来自 [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules) 仓库中的直连域名列表 `direct.txt`。脚本默认使用 GitHub Raw 下载，失败时会回退到 jsDelivr 镜像。
 
 ## 默认 DNS 配置
 
 - **大陆域名**默认使用以下 DNS 服务器：
   - 四川电信 DNS：`61.139.2.69`, `218.6.200.139`
-  - 阿里 DNS：`223.5.5.5`
+  - 腾讯 DNS：`119.29.29.29`
 
 - **不在列表上的其他域名**使用以下境外 DNS：
   - Google DNS：`https://dns64.dns.google/dns-query`
@@ -25,14 +26,25 @@
   - Quad101（TWNIC 提供）：`https://101.101.101.101/dns-query`
   - Cloudflare DNS：`tls://1.0.0.1`, `tls://1.1.1.1`
   - Applied Privacy DNS：`https://doh.applied-privacy.net/query`
+  - Cloudflare DoH：`https://1.0.0.1/dns-query`
   - Quad9 DNS：`https://149.112.112.112/dns-query`
   - OpenDNS 备用：`https://208.67.220.220/dns-query`
+  - AdGuard DNS：`quic://dns.adguard-dns.com`, `tls://dns.adguard-dns.com`
+
+## 使用方法
+
+```bash
+chmod +x generate_formatted_list.sh
+./generate_formatted_list.sh
+```
+
+执行完成后会在仓库根目录生成（或更新）`adguard_home_rules.txt`。
 
 ## 注意事项
 
-- 确保脚本所需的网络环境正常，能够成功下载域名列表。
-- 国内 DNS 和境外 DNS 的配置可以根据需要进行修改，脚本默认使用四川电信 DNS 和阿里 DNS。
-- 规则生成后会保存为 `adguard_home_rules.txt` 文件，在AdGuard Home 配置文件里配置好txt文件路径，AdGuard Home会自动识别并应用这些规则。
+- 确保脚本所需网络环境正常，能够访问 GitHub Raw 或 jsDelivr。
+- 国内 DNS 和境外 DNS 配置可按需修改。
+- 规则生成后会保存为 `adguard_home_rules.txt`，在 AdGuard Home 配置中引用该文件路径即可自动识别并应用。
 
 ## 许可协议
 
