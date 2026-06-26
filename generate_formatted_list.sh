@@ -7,7 +7,6 @@
 
 set -euo pipefail  # 遇到错误立即退出；未定义变量报错；管道失败即退出
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 downloaded_file="$(mktemp)"
 trap 'rm -f "$downloaded_file"' EXIT
 
@@ -17,8 +16,9 @@ download_urls=(
   "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
 )
 
-# 输出文件名称
-output_file="$script_dir/adguard_home_rules.txt"
+# 输出文件路径（默认写入临时目录，可通过 OUTPUT_FILE 覆盖）
+output_file="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
+mkdir -p "$(dirname "$output_file")"
 
 # 固定文本
 fixed_text="https://dns64.dns.google/dns-query

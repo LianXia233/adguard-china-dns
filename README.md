@@ -9,7 +9,8 @@
 - 支持主链接失败后自动回退到备用下载源。
 - 脚本执行结束会自动清理临时下载文件。
 - 生成的规则文件可直接应用于 **AdGuard Home**。
-- 工作流会将生成的规则文件上传到 GitHub Releases，并自动清理历史 Releases，仅保留最新版本。
+- 生成文件默认写入临时目录，不再保存到仓库代码目录。
+- 工作流会将生成的规则文件仅上传到 GitHub Releases，并自动清理历史 Releases，仅保留最新版本。
 
 ## 域名规则来源
 
@@ -39,14 +40,21 @@ chmod +x generate_formatted_list.sh
 ./generate_formatted_list.sh
 ```
 
-执行完成后会在仓库根目录生成（或更新）`adguard_home_rules.txt`。
+执行完成后会在临时目录生成规则文件（默认：`/tmp/adguard_home_rules.txt`）。
+
+如需自定义输出路径，可使用环境变量：
+
+```bash
+OUTPUT_FILE=/your/path/adguard_home_rules.txt ./generate_formatted_list.sh
+```
 
 ## 注意事项
 
 - 确保脚本所需网络环境正常，能够访问 GitHub Raw 或 jsDelivr。
 - 国内 DNS 和境外 DNS 配置可按需修改。
-- 规则生成后会保存为 `adguard_home_rules.txt`，在 AdGuard Home 配置中引用该文件路径即可自动识别并应用。
+- 规则生成后请在 AdGuard Home 配置中引用你实际输出路径，或直接使用 Releases 中发布的最新文件。
 
 ## 许可协议
 
-本项目采用 [GPLv3 许可证](LICENSE)。
+- 本仓库中的脚本与工作流文件采用 **GPL-3.0-only** 许可。
+- 生成规则依赖第三方数据源 [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules)，使用与再分发时请同时遵守其仓库声明的许可与使用条款。
