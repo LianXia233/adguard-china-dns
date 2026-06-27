@@ -40,7 +40,7 @@ chmod +x generate_formatted_list.sh
 ./generate_formatted_list.sh
 ```
 
-执行完成后会在临时目录生成规则文件（默认：`/tmp/adguard_home_rules.txt`）。
+执行完成后会在临时目录生成规则文件（默认：`$TMPDIR/adguard_home_rules.txt`，当 `TMPDIR` 未设置时使用 `/tmp/adguard_home_rules.txt`）。
 
 如需自定义输出路径，可使用环境变量：
 
@@ -56,5 +56,5 @@ OUTPUT_FILE=/your/path/adguard_home_rules.txt ./generate_formatted_list.sh
 
 ## 许可协议
 
-- 本仓库中的脚本与工作流文件采用 **GPL-3.0-only** 许可。
+- 本仓库中的脚本与工作流文件采用 **GPLv3** 许可。
 - 生成规则依赖第三方数据源 [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules)，使用与再分发时请同时遵守其仓库声明的许可与使用条款。
