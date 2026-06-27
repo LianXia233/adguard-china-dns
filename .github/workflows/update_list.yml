@@ -38,12 +38,9 @@ jobs:
     # 步骤 4: 检查规则文件是否存在
     - name: Check if rules file exists
       id: check_file
-      run: |
-        if [ -f "${RULES_FILE}" ]; then
-          echo "files_exists=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "files_exists=false" >> "$GITHUB_OUTPUT"
-        fi
+      uses: andstor/file-existence-action@v2
+      with:
+        files: ${{ env.RULES_FILE }}
 
     # 步骤 5: 生成 Release 元数据
     - name: Prepare release metadata
