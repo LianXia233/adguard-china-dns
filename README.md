@@ -54,6 +54,6 @@ OUTPUT_FILE=/path/to/adguard_home_rules.txt ./generate_formatted_list.sh
 
 ## 许可协议
 
-本仓库脚本与工作流代码采用 **GPLv3** 许可发布。  
+本仓库脚本与工作流代码采用 [GPLv3 许可证](LICENSE) 发布。  
 由于规则内容来自第三方仓库 [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules)，其数据与相关权利归原项目及其许可证所有。  
 使用本项目生成或分发规则文件时，请同时遵守上游数据来源的许可条款与使用要求。
