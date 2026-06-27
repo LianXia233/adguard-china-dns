@@ -43,8 +43,7 @@ chmod +x generate_formatted_list.sh
 执行完成后会在临时目录生成规则文件：
 
 - 若设置了 `OUTPUT_FILE`，使用 `OUTPUT_FILE` 指定路径；
-- 若未设置 `OUTPUT_FILE`，默认使用 `$TMPDIR/adguard_home_rules.txt`；
-- 当 `TMPDIR` 未设置时，回退到 `/tmp/adguard_home_rules.txt`。
+- 若未设置 `OUTPUT_FILE`，默认使用 `mktemp` 在 `$TMPDIR`（未设置时回退到 `/tmp`）下生成唯一文件名（示例：`/tmp/adguard_home_rules.A1b2C3.txt`）。
 
 如需自定义输出路径，可使用环境变量：
 

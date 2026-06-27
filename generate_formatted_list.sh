@@ -17,8 +17,12 @@ download_urls=(
   "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
 )
 
-# 输出文件路径（默认写入临时目录，可通过 OUTPUT_FILE 覆盖）
-output_file="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
+# 输出文件路径（可通过 OUTPUT_FILE 覆盖；默认在临时目录自动生成唯一文件名）
+if [[ -n "${OUTPUT_FILE:-}" ]]; then
+  output_file="$OUTPUT_FILE"
+else
+  output_file="$(mktemp "${TMPDIR:-/tmp}/adguard_home_rules.XXXXXX.txt")"
+fi
 output_dir="$(dirname "$output_file")"
 mkdir -p "$output_dir" || {
   echo "错误：无法创建输出目录 $output_dir，请检查 OUTPUT_FILE 路径是否有效且当前用户有写入权限。"
