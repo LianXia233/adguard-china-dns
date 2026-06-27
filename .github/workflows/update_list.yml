@@ -14,6 +14,8 @@ permissions:
 jobs:
   update-rules:
     runs-on: ubuntu-latest
+    env:
+      RULES_FILE: /tmp/adguard_home_rules.txt
 
     steps:
     # 步骤 1: 检出当前仓库的代码
@@ -24,7 +26,7 @@ jobs:
     - name: Run script to generate rules
       run: |
         chmod +x generate_formatted_list.sh
-        OUTPUT_FILE=/tmp/adguard_home_rules.txt ./generate_formatted_list.sh
+        OUTPUT_FILE="$RULES_FILE" ./generate_formatted_list.sh
       id: run_script  # 给此步骤一个 ID，方便后续引用
 
     # 步骤 3: 检查脚本执行是否成功
@@ -39,7 +41,7 @@ jobs:
       id: check_file
       uses: andstor/file-existence-action@v2
       with:
-        files: /tmp/adguard_home_rules.txt  # 提供正确的文件路径列表
+        files: ${{ env.RULES_FILE }}  # 提供正确的文件路径列表
 
     # 步骤 5: 生成 Release 元数据
     - name: Prepare release metadata
@@ -55,7 +57,7 @@ jobs:
       with:
         tag_name: ${{ env.TAG_NAME }}
         name: ${{ env.RELEASE_NAME }}
-        files: /tmp/adguard_home_rules.txt
+        files: ${{ env.RULES_FILE }}
         body: 自动生成的最新 AdGuard Home 规则文件。
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
