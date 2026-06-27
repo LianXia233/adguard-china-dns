@@ -7,7 +7,6 @@
 
 set -euo pipefail  # 遇到错误立即退出；未定义变量报错；管道失败即退出
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 downloaded_file="$(mktemp)"
 trap 'rm -f "$downloaded_file"' EXIT
 
@@ -17,8 +16,14 @@ download_urls=(
   "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
 )
 
-# 输出文件名称
-output_file="$script_dir/adguard_home_rules.txt"
+# 输出文件名称（默认输出到临时目录，可通过环境变量 OUTPUT_FILE 覆盖）
+default_tmp_dir="${TMPDIR:-/tmp}"
+output_file="${OUTPUT_FILE:-$default_tmp_dir/adguard_home_rules.txt}"
+output_dir="$(dirname "$output_file")"
+if ! mkdir -p "$output_dir"; then
+  echo "错误：无法创建输出目录 $output_dir，请检查 OUTPUT_FILE 路径权限。"
+  exit 1
+fi
 
 # 固定文本
 fixed_text="https://dns64.dns.google/dns-query
