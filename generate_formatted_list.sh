@@ -3,6 +3,7 @@
 # ----------------------------------------------------------------
 # 脚本描述：
 #   自动生成适配 AdGuard Home 的规则文件。
+#   运行环境：Unix/Linux shell（使用 TMPDIR 或 /tmp 作为默认临时目录）。
 # ----------------------------------------------------------------
 
 set -euo pipefail  # 遇到错误立即退出；未定义变量报错；管道失败即退出
@@ -20,7 +21,7 @@ download_urls=(
 output_file="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
 output_dir="$(dirname "$output_file")"
 mkdir -p "$output_dir" || {
-  echo "错误：无法创建输出目录 $output_dir"
+  echo "错误：无法创建输出目录 $output_dir，请检查 OUTPUT_FILE 路径是否有效且当前用户有写入权限。"
   exit 1
 }
 
