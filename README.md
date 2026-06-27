@@ -42,6 +42,10 @@ chmod +x generate_formatted_list.sh
 执行完成后默认会在 `/tmp/adguard_home_rules.txt` 生成（或更新）规则文件。  
 如需自定义输出位置，可在执行时设置 `OUTPUT_FILE` 环境变量。
 
+```bash
+OUTPUT_FILE=/path/to/adguard_home_rules.txt ./generate_formatted_list.sh
+```
+
 ## 注意事项
 
 - 确保脚本所需网络环境正常，能够访问 GitHub Raw 或 jsDelivr。

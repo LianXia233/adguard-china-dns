@@ -18,7 +18,10 @@ download_urls=(
 
 # 输出文件名称（默认输出到临时目录，可通过环境变量 OUTPUT_FILE 覆盖）
 output_file="${OUTPUT_FILE:-/tmp/adguard_home_rules.txt}"
-mkdir -p "$(dirname "$output_file")"
+if ! mkdir -p "$(dirname "$output_file")"; then
+  echo "错误：无法创建输出目录 $(dirname "$output_file")，请检查 OUTPUT_FILE 路径权限。"
+  exit 1
+fi
 
 # 固定文本
 fixed_text="https://dns64.dns.google/dns-query
