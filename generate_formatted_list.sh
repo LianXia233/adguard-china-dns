@@ -25,8 +25,29 @@ if ! mkdir -p "$output_dir"; then
   exit 1
 fi
 
-# 固定文本
-fixed_text="https://dns64.dns.google/dns-query
+# IP 地址数组
+ips=("119.29.29.29" "223.5.5.5" "223.6.6.6")
+
+# 下载文件函数
+download_file() {
+  local url="$1"
+  local output="$2"
+
+  echo "正在尝试下载文件: $url ..."
+  # 添加了 --compressed 以支持 gzip 压缩，加快下载速度
+  if curl -fsSL --compressed --connect-timeout 30 --retry 2 --retry-delay 1 -o "$output" "$url"; then
+    echo -e "下载完成！\n"
+    return 0
+  else
+    echo -e "下载失败！\n"
+    return 1
+  fi
+}
+
+# 输出固定配置头的函数（使用 Heredoc 更清晰）
+write_fixed_text() {
+  cat << 'EOF'
+https://dns64.dns.google/dns-query
 https://208.67.222.222/dns-query
 https://101.101.101.101/dns-query
 tls://1.0.0.1
@@ -58,63 +79,53 @@ tls://dns.adguard-dns.com
 [/fnnas.com/]119.29.29.29 223.5.5.5 223.6.6.6
 [/fnos.net/]119.29.29.29 223.5.5.5 223.6.6.6
 [/wmupd.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/yhcdn1.wmupd.com/]119.29.29.29 223.5.5.5 223.6.6.6"
-
-
-
-
-# IP 地址数组
-ips=("119.29.29.29" "223.5.5.5" "223.6.6.6")
-
-# 下载文件函数
-download_file() {
-  local url="$1"
-  local output="$2"
-
-  echo "正在尝试下载文件: $url ..."
-  if curl -fsSL --connect-timeout 30 --retry 2 --retry-delay 1 -o "$output" "$url"; then
-    echo -e "\n下载完成！"
-    return 0
-  else
-    echo -e "\n下载失败！"
-    return 1
-  fi
+[/yhcdn1.wmupd.com/]119.29.29.29 223.5.5.5 223.6.6.6
+EOF
 }
 
 # 处理文件格式化
 process_file() {
   local input_file="$1"
-  local output_file="$2"
-  local ips_arr=("${ips[@]}")
+  local target_file="$2"
 
   if [[ ! -f "$input_file" ]]; then
     echo "错误：输入文件 $input_file 不存在。"
     exit 1
   fi
 
-  echo "$fixed_text" > "$output_file"
-  echo -e "\n\n" >> "$output_file"
+  # 写入固定内容
+  write_fixed_text > "$target_file"
+  echo -e "\n\n" >> "$target_file"
 
-  awk -v ips_str="${ips_arr[*]}" '
+  # 利用 AWK 处理下载的域名列表
+  awk -v ips_str="${ips[*]}" '
   BEGIN {
-      server_count = split(ips_str, ips, " ");
+      server_count = split(ips_str, ip_array, " ");
   }
   {
+      # 移除可能存在的 Windows 换行符
       gsub(/\r$/, "", $0);
+      # 跳过空行和注释行
       if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/) next;
+      # 移除某些规则可能带有的前导点
       if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
+      
+      # 格式化输出: [/domain/]ip1 ip2
       printf "[/%s/]", $0;
-      for (i = 1; i <= server_count; i++) printf " %s", ips[i];
+      for (i = 1; i <= server_count; i++) {
+          printf " %s", ip_array[i];
+      }
       printf "\n";
   }
   END {
-      print "\n文件处理完成。" > "/dev/stderr";
+      print "域名规则处理完成。" > "/dev/stderr";
   }
-  ' "$input_file" >> "$output_file"
+  ' "$input_file" >> "$target_file"
 
-  echo "格式化完成，输出保存到 $output_file"
+  echo "格式化完成，最终配置已保存到：$target_file"
 }
 
+# 主执行逻辑
 download_success=false
 for url in "${download_urls[@]}"; do
   if download_file "$url" "$downloaded_file"; then
@@ -124,7 +135,7 @@ for url in "${download_urls[@]}"; do
 done
 
 if [[ "$download_success" != "true" ]]; then
-  echo "主/备下载链接均失败，请检查网络连接或 URL。"
+  echo "错误：主/备下载链接均失败，请检查网络连接或 URL 有效性。"
   exit 1
 fi
 
