@@ -25,8 +25,8 @@ if ! mkdir -p "$output_dir"; then
   exit 1
 fi
 
-# IP 地址数组
-ips=("119.29.29.29" "223.5.5.5" "223.6.6.6")
+# IP 地址数组（已移除 223.5.5.5, 223.6.6.6 并替换为 1.2.4.8）
+ips=("119.29.29.29" "1.2.4.8")
 
 # 下载文件函数
 download_file() {
@@ -34,7 +34,6 @@ download_file() {
   local output="$2"
 
   echo "正在尝试下载文件: $url ..."
-  # 添加了 --compressed 以支持 gzip 压缩，加快下载速度
   if curl -fsSL --compressed --connect-timeout 30 --retry 2 --retry-delay 1 -o "$output" "$url"; then
     echo -e "下载完成！\n"
     return 0
@@ -44,7 +43,7 @@ download_file() {
   fi
 }
 
-# 输出固定配置头的函数（使用 Heredoc 更清晰）
+# 输出固定配置头的函数（固定文本中的 IP 也已同步替换）
 write_fixed_text() {
   cat << 'EOF'
 https://dns64.dns.google/dns-query
@@ -59,27 +58,27 @@ https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 
-[/xoyo.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/calatopia.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/kurogames.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/myqcloud.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/wegame.com.cn/]119.29.29.29 223.5.5.5 223.6.6.6
-[/xoyocdn.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/cbjq.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/kurogame.xyz/]119.29.29.29 223.5.5.5 223.6.6.6
-[/aki-game.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/pcdownload-wangsu.aki-game.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/ali-sh-datareceiver.kurogame.xyz/]119.29.29.29 223.5.5.5 223.6.6.6
-[/juequling.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/autopatchcn.juequling.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/3gppnetwork.org/]119.29.29.29 223.5.5.5 223.6.6.6
-[/ugreengroup.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/sinilink.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/ug.link/]119.29.29.29 223.5.5.5 223.6.6.6
-[/fnnas.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/fnos.net/]119.29.29.29 223.5.5.5 223.6.6.6
-[/wmupd.com/]119.29.29.29 223.5.5.5 223.6.6.6
-[/yhcdn1.wmupd.com/]119.29.29.29 223.5.5.5 223.6.6.6
+[/xoyo.com/]119.29.29.29 1.2.4.8
+[/calatopia.com/]119.29.29.29 1.2.4.8
+[/kurogames.com/]119.29.29.29 1.2.4.8
+[/myqcloud.com/]119.29.29.29 1.2.4.8
+[/wegame.com.cn/]119.29.29.29 1.2.4.8
+[/xoyocdn.com/]119.29.29.29 1.2.4.8
+[/cbjq.com/]119.29.29.29 1.2.4.8
+[/kurogame.xyz/]119.29.29.29 1.2.4.8
+[/aki-game.com/]119.29.29.29 1.2.4.8
+[/pcdownload-wangsu.aki-game.com/]119.29.29.29 1.2.4.8
+[/ali-sh-datareceiver.kurogame.xyz/]119.29.29.29 1.2.4.8
+[/juequling.com/]119.29.29.29 1.2.4.8
+[/autopatchcn.juequling.com/]119.29.29.29 1.2.4.8
+[/3gppnetwork.org/]119.29.29.29 1.2.4.8
+[/ugreengroup.com/]119.29.29.29 1.2.4.8
+[/sinilink.com/]119.29.29.29 1.2.4.8
+[/ug.link/]119.29.29.29 1.2.4.8
+[/fnnas.com/]119.29.29.29 1.2.4.8
+[/fnos.net/]119.29.29.29 1.2.4.8
+[/wmupd.com/]119.29.29.29 1.2.4.8
+[/yhcdn1.wmupd.com/]119.29.29.29 1.2.4.8
 EOF
 }
 
