@@ -33,7 +33,7 @@ CUSTOM_DOMAINS=(
   "ali-sh-datareceiver.kurogame.xyz" "juequling.com"
   "autopatchcn.juequling.com" "3gppnetwork.org"
   "ugreengroup.com" "sinilink.com" "ug.link" "fnnas.com"
-  "fnos.net" "wmupd.com" "yhcdn1.wmupd.com"
+  "fnos.net" "wmupd.com" "yhcdn1.wmupd.com" "wanmei.com"
 )
 
 # 最终生成文件的保存位置
