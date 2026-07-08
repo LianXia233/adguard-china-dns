@@ -1,56 +1,86 @@
 #!/usr/bin/env bash
 
-# ----------------------------------------------------------------
-# 脚本描述：
-#   自动生成适配 AdGuard Home 的规则文件。
-# ----------------------------------------------------------------
+# ================================================================
+# 脚本用途：自动下载并生成 AdGuard Home 的上游 DNS 路由规则。
+# ================================================================
 
-set -euo pipefail  # 遇到错误立即退出；未定义变量报错；管道失败即退出
+# 开启严格模式：一旦出现错误或变量未定义，脚本将立刻停止，防止产生错误的文件
+set -euo pipefail
 
-downloaded_file="$(mktemp)"
-trap 'rm -f "$downloaded_file"' EXIT
+# ================================================================
+# 1. 核心配置区 (你可以随时在这里修改配置)
+# ================================================================
 
-# 下载链接（主/备）
-download_urls=(
+# 规则的下载链接（包含了主用和备用地址，防止某个网站抽风）
+DOWNLOAD_URLS=(
   "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
   "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
 )
 
-# 输出文件名称（默认输出到临时目录，可通过环境变量 OUTPUT_FILE 覆盖）
-default_tmp_dir="${TMPDIR:-/tmp}"
-output_file="${OUTPUT_FILE:-$default_tmp_dir/adguard_home_rules.txt}"
-output_dir="$(dirname "$output_file")"
-if ! mkdir -p "$output_dir"; then
-  echo "错误：无法创建输出目录 $output_dir，请检查 OUTPUT_FILE 路径权限。"
-  exit 1
-fi
-
-# 上游 DNS 数组（已修正 DoT 的 tls:// 前缀）
-upstreams=(
+# 你想使用的上游 DNS 列表 (支持 DoH, DoT, HTTP/3 等)
+UPSTREAMS=(
   "https://sm2.doh.pub/dns-query"
   "tls://dot.pub"
   "tls://dns.alidns.com"
   "h3://223.5.5.5/dns-query"
 )
 
-# 下载文件函数
-download_file() {
-  local url="$1"
-  local output="$2"
+# 强制使用上方 DNS 来解析的“自定义白名单域名”
+CUSTOM_DOMAINS=(
+  "xoyo.com" "calatopia.com" "kurogames.com" "myqcloud.com"
+  "wegame.com.cn" "xoyocdn.com" "cbjq.com" "kurogame.xyz"
+  "aki-game.com" "pcdownload-wangsu.aki-game.com"
+  "ali-sh-datareceiver.kurogame.xyz" "juequling.com"
+  "autopatchcn.juequling.com" "3gppnetwork.org"
+  "ugreengroup.com" "sinilink.com" "ug.link" "fnnas.com"
+  "fnos.net" "wmupd.com" "yhcdn1.wmupd.com"
+)
 
-  echo "正在尝试下载文件: $url ..."
-  if curl -fsSL --compressed --connect-timeout 30 --retry 2 --retry-delay 1 -o "$output" "$url"; then
-    echo -e "下载完成！\n"
-    return 0
-  else
-    echo -e "下载失败！\n"
-    return 1
-  fi
+# 最终生成文件的保存位置
+# 如果你在运行脚本时没有指定 OUTPUT_FILE，它默认会保存在 /tmp/adguard_home_rules.txt
+OUTPUT_FILE="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
+
+# ================================================================
+# 2. 准备工作
+# ================================================================
+
+# 创建一个临时文件来装下载的数据
+# trap 命令的作用是：无论脚本是成功还是报错退出，都会自动把这个临时文件删掉，不占空间
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# 检查一下输出文件的文件夹是否存在，如果不存在就自动新建一个
+OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
+if ! mkdir -p "$OUTPUT_DIR"; then
+  echo "❌ 错误：无法创建文件夹 $OUTPUT_DIR，请检查路径或权限。"
+  exit 1
+fi
+
+# ================================================================
+# 3. 核心功能
+# ================================================================
+
+# 功能：下载在线规则
+download_rules() {
+  for url in "${DOWNLOAD_URLS[@]}"; do
+    echo "🌐 正在尝试下载: $url ..."
+    # 使用 curl 下载。加了 --compressed 可以让下载变快，--retry 可以在失败时自动重试
+    if curl -fsSL --compressed --connect-timeout 15 --retry 2 -o "$TMP_FILE" "$url"; then
+      echo "✅ 下载成功！"
+      return 0
+    fi
+    echo "⚠️ 此链接下载失败，准备尝试下一个备用链接..."
+  done
+  
+  # 如果循环结束还没成功，说明彻底失败了
+  echo "❌ 致命错误：所有链接均下载失败，请检查网络。"
+  return 1
 }
 
-# 输出固定配置头的函数
-write_fixed_text() {
-  cat << 'EOF'
+# 功能：写入不需要特殊路由的基础 DNS
+write_global_dns() {
+  cat << 'EOF' > "$OUTPUT_FILE"
+# === 全局基础 DNS ===
 https://dns64.dns.google/dns-query
 https://208.67.222.222/dns-query
 https://101.101.101.101/dns-query
@@ -63,86 +93,54 @@ https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 
-[/xoyo.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/calatopia.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/kurogames.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/myqcloud.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/wegame.com.cn/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/xoyocdn.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/cbjq.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/kurogame.xyz/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/aki-game.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/pcdownload-wangsu.aki-game.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/ali-sh-datareceiver.kurogame.xyz/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/juequling.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/autopatchcn.juequling.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/3gppnetwork.org/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/ugreengroup.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/sinilink.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/ug.link/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/fnnas.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/fnos.net/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/wmupd.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
-[/yhcdn1.wmupd.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
 EOF
 }
 
-# 处理文件格式化
-process_file() {
-  local input_file="$1"
-  local target_file="$2"
+# 功能：组装并生成最终的配置
+format_rules() {
+  # 第一步：把基础 DNS 写进去
+  write_global_dns
 
-  if [[ ! -f "$input_file" ]]; then
-    echo "错误：输入文件 $input_file 不存在。"
-    exit 1
-  fi
+  # 把我们的 DNS 数组拼接成一行，中间用空格隔开
+  local upstreams_str="${UPSTREAMS[*]}"
 
-  # 写入固定内容
-  write_fixed_text > "$target_file"
-  echo -e "\n\n" >> "$target_file"
+  # 第二步：把前面配置的“自定义域名”写进去
+  echo "# === 你的自定义域名规则 === " >> "$OUTPUT_FILE"
+  for domain in "${CUSTOM_DOMAINS[@]}"; do
+    echo "[/${domain}/]${upstreams_str}" >> "$OUTPUT_FILE"
+  done
+  echo "" >> "$OUTPUT_FILE"
 
-  # 利用 AWK 处理下载的域名列表
-  awk -v upstreams_str="${upstreams[*]}" '
-  BEGIN {
-      server_count = split(upstreams_str, upstream_array, " ");
-  }
+  # 第三步：处理从网上下载的规则列表
+  echo "# === 在线订阅的域名规则 === " >> "$OUTPUT_FILE"
+  
+  # 使用 AWK 这个文字处理神器来逐行改造下载好的文件
+  awk -v dns_servers="${upstreams_str}" '
   {
-      # 移除可能存在的 Windows 换行符
+      # 1. 删掉可能存在的隐藏回车符（修复 Windows/Linux 换行格式冲突问题）
       gsub(/\r$/, "", $0);
-      # 跳过空行和注释行
+      
+      # 2. 如果遇到空行，或者以 # 开头的注释，直接跳过，看下一行
       if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/) next;
-      # 移除某些规则可能带有的前导点
+      
+      # 3. 抹除域名前面多余的 "."（比如把 .abc.com 变成 abc.com）
       if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
       
-      # 格式化输出: [/domain/]upstream1 upstream2 ...
-      printf "[/%s/]", $0;
-      for (i = 1; i <= server_count; i++) {
-          printf " %s", upstream_array[i];
-      }
-      printf "\n";
+      # 4. 把域名和 DNS 拼装成 AdGuard Home 看得懂的样子并输出
+      printf "[/%s/]%s\n", $0, dns_servers;
   }
-  END {
-      print "域名规则处理完成。" > "/dev/stderr";
-  }
-  ' "$input_file" >> "$target_file"
+  ' "$TMP_FILE" >> "$OUTPUT_FILE"
 
-  echo "格式化完成，最终配置已保存到：$target_file"
+  echo "✨ 规则文件处理完毕！已经妥善保存在：$OUTPUT_FILE"
 }
 
-# 主执行逻辑
-download_success=false
-for url in "${download_urls[@]}"; do
-  if download_file "$url" "$downloaded_file"; then
-    download_success=true
-    break
-  fi
-done
+# ================================================================
+# 4. 启动脚本 (一切从这里开始)
+# ================================================================
 
-if [[ "$download_success" != "true" ]]; then
-  echo "错误：主/备下载链接均失败，请检查网络连接或 URL 有效性。"
+# 如果下载成功，就接着去格式化处理；如果失败，脚本直接退出
+if download_rules; then
+  format_rules
+else
   exit 1
 fi
-
-process_file "$downloaded_file" "$output_file"
-
-exit 0
