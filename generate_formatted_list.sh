@@ -25,11 +25,11 @@ if ! mkdir -p "$output_dir"; then
   exit 1
 fi
 
-# 上游 DNS 数组（支持 DoH, DoT, HTTP/3 等）
+# 上游 DNS 数组（已修正 DoT 的 tls:// 前缀）
 upstreams=(
   "https://sm2.doh.pub/dns-query"
-  "dot.pub"
-  "dns.alidns.com"
+  "tls://dot.pub"
+  "tls://dns.alidns.com"
   "h3://223.5.5.5/dns-query"
 )
 
@@ -63,27 +63,27 @@ https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 
-[/xoyo.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/calatopia.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/kurogames.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/myqcloud.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/wegame.com.cn/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/xoyocdn.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/cbjq.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/kurogame.xyz/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/aki-game.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/pcdownload-wangsu.aki-game.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/ali-sh-datareceiver.kurogame.xyz/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/juequling.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/autopatchcn.juequling.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/3gppnetwork.org/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/ugreengroup.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/sinilink.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/ug.link/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/fnnas.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/fnos.net/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/wmupd.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
-[/yhcdn1.wmupd.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/xoyo.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/calatopia.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/kurogames.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/myqcloud.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/wegame.com.cn/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/xoyocdn.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/cbjq.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/kurogame.xyz/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/aki-game.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/pcdownload-wangsu.aki-game.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/ali-sh-datareceiver.kurogame.xyz/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/juequling.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/autopatchcn.juequling.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/3gppnetwork.org/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/ugreengroup.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/sinilink.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/ug.link/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/fnnas.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/fnos.net/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/wmupd.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
+[/yhcdn1.wmupd.com/]https://sm2.doh.pub/dns-query tls://dot.pub tls://dns.alidns.com h3://223.5.5.5/dns-query
 EOF
 }
 
