@@ -25,8 +25,13 @@ if ! mkdir -p "$output_dir"; then
   exit 1
 fi
 
-# IP 地址数组（已移除 223.5.5.5, 223.6.6.6 并替换为 1.2.4.8）
-ips=("119.29.29.29" "1.2.4.8")
+# 上游 DNS 数组（支持 DoH, DoT, HTTP/3 等）
+upstreams=(
+  "https://sm2.doh.pub/dns-query"
+  "dot.pub"
+  "dns.alidns.com"
+  "h3://223.5.5.5/dns-query"
+)
 
 # 下载文件函数
 download_file() {
@@ -43,7 +48,7 @@ download_file() {
   fi
 }
 
-# 输出固定配置头的函数（固定文本中的 IP 也已同步替换）
+# 输出固定配置头的函数
 write_fixed_text() {
   cat << 'EOF'
 https://dns64.dns.google/dns-query
@@ -58,27 +63,27 @@ https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 
-[/xoyo.com/]119.29.29.29 1.2.4.8
-[/calatopia.com/]119.29.29.29 1.2.4.8
-[/kurogames.com/]119.29.29.29 1.2.4.8
-[/myqcloud.com/]119.29.29.29 1.2.4.8
-[/wegame.com.cn/]119.29.29.29 1.2.4.8
-[/xoyocdn.com/]119.29.29.29 1.2.4.8
-[/cbjq.com/]119.29.29.29 1.2.4.8
-[/kurogame.xyz/]119.29.29.29 1.2.4.8
-[/aki-game.com/]119.29.29.29 1.2.4.8
-[/pcdownload-wangsu.aki-game.com/]119.29.29.29 1.2.4.8
-[/ali-sh-datareceiver.kurogame.xyz/]119.29.29.29 1.2.4.8
-[/juequling.com/]119.29.29.29 1.2.4.8
-[/autopatchcn.juequling.com/]119.29.29.29 1.2.4.8
-[/3gppnetwork.org/]119.29.29.29 1.2.4.8
-[/ugreengroup.com/]119.29.29.29 1.2.4.8
-[/sinilink.com/]119.29.29.29 1.2.4.8
-[/ug.link/]119.29.29.29 1.2.4.8
-[/fnnas.com/]119.29.29.29 1.2.4.8
-[/fnos.net/]119.29.29.29 1.2.4.8
-[/wmupd.com/]119.29.29.29 1.2.4.8
-[/yhcdn1.wmupd.com/]119.29.29.29 1.2.4.8
+[/xoyo.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/calatopia.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/kurogames.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/myqcloud.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/wegame.com.cn/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/xoyocdn.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/cbjq.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/kurogame.xyz/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/aki-game.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/pcdownload-wangsu.aki-game.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/ali-sh-datareceiver.kurogame.xyz/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/juequling.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/autopatchcn.juequling.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/3gppnetwork.org/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/ugreengroup.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/sinilink.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/ug.link/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/fnnas.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/fnos.net/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/wmupd.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
+[/yhcdn1.wmupd.com/]https://sm2.doh.pub/dns-query dot.pub dns.alidns.com h3://223.5.5.5/dns-query
 EOF
 }
 
@@ -97,9 +102,9 @@ process_file() {
   echo -e "\n\n" >> "$target_file"
 
   # 利用 AWK 处理下载的域名列表
-  awk -v ips_str="${ips[*]}" '
+  awk -v upstreams_str="${upstreams[*]}" '
   BEGIN {
-      server_count = split(ips_str, ip_array, " ");
+      server_count = split(upstreams_str, upstream_array, " ");
   }
   {
       # 移除可能存在的 Windows 换行符
@@ -109,10 +114,10 @@ process_file() {
       # 移除某些规则可能带有的前导点
       if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
       
-      # 格式化输出: [/domain/]ip1 ip2
+      # 格式化输出: [/domain/]upstream1 upstream2 ...
       printf "[/%s/]", $0;
       for (i = 1; i <= server_count; i++) {
-          printf " %s", ip_array[i];
+          printf " %s", upstream_array[i];
       }
       printf "\n";
   }
