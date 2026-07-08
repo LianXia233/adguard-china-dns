@@ -2,7 +2,7 @@ name: 更新 AdGuard Home 规则
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # 每天 UTC 时间 23:00 (对应北京时间上午 7:00) 触发
+    - cron: "30 23 * * *"  # 每天 UTC 时间 23:30 (对应北京时间上午 7:30) 触发
   push:
     branches:
       - main  # 监听 main 分支的推送事件
