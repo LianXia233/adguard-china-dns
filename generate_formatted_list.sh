@@ -23,7 +23,6 @@ UPSTREAMS=(
   "https://sm2.doh.pub/dns-query"
   "tls://dot.pub"
   "https://doh.pub/dns-query"
-  "tls://dot.360.cn"
 )
 
 # 强制使用上方 DNS 来解析的“自定义白名单域名”
@@ -78,7 +77,7 @@ download_rules() {
   return 1
 }
 
-# 功能：写入不需要特殊路由的基础 DNS,这是非白名单全局使用的DNS。
+# 功能：写入不需要特殊路由的基础 DNS，非规则白名单全局使用以下DNS。
 write_global_dns() {
   cat << 'EOF' > "$OUTPUT_FILE"
 # === 全局基础 DNS ===
