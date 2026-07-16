@@ -23,6 +23,8 @@ UPSTREAMS=(
   "https://sm2.doh.pub/dns-query"
   "tls://dot.pub"
   "https://doh.pub/dns-query"
+  "https://doh.volcengine.com/dns-query"
+  "tls://dot.volcengine.com"
 )
 
 # 强制使用上方 DNS 来解析的“自定义白名单域名”
@@ -92,6 +94,8 @@ https://149.112.112.112/dns-query
 https://208.67.220.220/dns-query
 quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
+https://1.1.1.1/dns-query
+https://dns.google/dns-query
 
 EOF
 }
