@@ -1,88 +1,22 @@
 #!/usr/bin/env bash
 
-# ================================================================
-# 脚本用途：自动下载并生成 AdGuard Home 的上游 DNS 路由规则。
-# ================================================================
-
-# 开启严格模式：一旦出现错误或变量未定义，脚本将立刻停止，防止产生错误的文件
+# ==============================================================================
+# 脚本用途：自动下载并生成 AdGuard Home 的上游 DNS 路由规则 (生产级优化版)
+# ==============================================================================
 set -euo pipefail
 
-# ================================================================
-# 1. 核心配置区 (你可以随时在这里修改配置)
-# ================================================================
+# ==============================================================================
+# 1. 【配置中心】—— 纯文本配置区，支持随意换行、空格，全自动纠错
+# ==============================================================================
 
-# 规则的下载链接（包含了主用和备用地址，防止某个网站抽风）
+# 下载链接 (包含备用)
 DOWNLOAD_URLS=(
   "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
   "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt"
 )
 
-# 你想使用的上游 DNS 列表 (支持 DoH, DoT, HTTP/3 等)
-# （这里配置的 DNS 会用于解析下面的白名单域名以及下载的在线规则）
-UPSTREAMS=(
-  "https://sm2.doh.pub/dns-query"
-  "tls://dot.pub"
-  "https://doh.pub/dns-query"
-  "https://doh.volcengine.com/dns-query"
-  "tls://dot.volcengine.com"
-)
-
-# 强制使用上方 DNS 来解析的“自定义白名单域名”
-CUSTOM_DOMAINS=(
-  "xoyo.com" "calatopia.com" "kurogames.com" "myqcloud.com"
-  "wegame.com.cn" "xoyocdn.com" "cbjq.com" "kurogame.xyz"
-  "aki-game.com" "pcdownload-wangsu.aki-game.com"
-  "ali-sh-datareceiver.kurogame.xyz" "juequling.com"
-  "autopatchcn.juequling.com" "3gppnetwork.org"
-  "ugreengroup.com" "sinilink.com" "ug.link" "fnnas.com"
-  "fnos.net" "wmupd.com" "yhcdn1.wmupd.com" "wanmei.com"
-)
-
-# 最终生成文件的保存位置
-# 如果你在运行脚本时没有指定 OUTPUT_FILE，它默认会保存在 /tmp/adguard_home_rules.txt
-OUTPUT_FILE="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
-
-# ================================================================
-# 2. 准备工作
-# ================================================================
-
-# 创建一个临时文件来装下载的数据
-# trap 命令的作用是：无论脚本是成功还是报错退出，都会自动把这个临时文件删掉，不占空间
-TMP_FILE="$(mktemp)"
-trap 'rm -f "$TMP_FILE"' EXIT
-
-# 检查一下输出文件的文件夹是否存在，如果不存在就自动新建一个
-OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
-if ! mkdir -p "$OUTPUT_DIR"; then
-  echo "❌ 错误：无法创建文件夹 $OUTPUT_DIR，请检查路径或权限。"
-  exit 1
-fi
-
-# ================================================================
-# 3. 核心功能
-# ================================================================
-
-# 功能：下载在线规则
-download_rules() {
-  for url in "${DOWNLOAD_URLS[@]}"; do
-    echo "🌐 正在尝试下载: $url ..."
-    # 使用 curl 下载。加了 --compressed 可以让下载变快，--retry 可以在失败时自动重试
-    if curl -fsSL --compressed --connect-timeout 15 --retry 2 -o "$TMP_FILE" "$url"; then
-      echo "✅ 下载成功！"
-      return 0
-    fi
-    echo "⚠️ 此链接下载失败，准备尝试下一个备用链接..."
-  done
-  
-  # 如果循环结束还没成功，说明彻底失败了
-  echo "❌ 致命错误：所有链接均下载失败，请检查网络。"
-  return 1
-}
-
-# 功能：写入不需要特殊路由的基础 DNS，非规则白名单全局使用以下DNS。
-write_global_dns() {
-  cat << 'EOF' > "$OUTPUT_FILE"
-# === 全局基础 DNS ===
+# 1. 全局基础 DNS
+GLOBAL_DNS_CONFIG="
 https://dns64.dns.google/dns-query
 https://208.67.222.222/dns-query
 https://101.101.101.101/dns-query
@@ -96,55 +30,127 @@ quic://dns.adguard-dns.com
 tls://dns.adguard-dns.com
 https://1.1.1.1/dns-query
 https://dns.google/dns-query
+"
 
-EOF
-}
+# 2. 上游 DNS 列表
+UPSTREAM_DNS_CONFIG="
+https://sm2.doh.pub/dns-query
+tls://dot.pub
+https://doh.pub/dns-query
+https://doh.volcengine.com/dns-query
+tls://dot.volcengine.com
+"
 
-# 功能：组装并生成最终的配置
-format_rules() {
-  # 第一步：把基础 DNS 写进去
-  write_global_dns
+# 3. 自定义白名单域名
+CUSTOM_DOMAINS_CONFIG="
+xoyo.com
+calatopia.com
+kurogames.com
+myqcloud.com
+wegame.com.cn
+xoyocdn.com
+cbjq.com
+kurogame.xyz
+aki-game.com
+pcdownload-wangsu.aki-game.com
+ali-sh-datareceiver.kurogame.xyz
+juequling.com
+autopatchcn.juequling.com
+3gppnetwork.org
+ugreengroup.com
+sinilink.com
+ug.link
+fnnas.com
+fnos.net
+wmupd.com
+yhcdn1.wmupd.com
+wanmei.com
+"
 
-  # 把我们的 DNS 数组拼接成一行，中间用空格隔开
-  local upstreams_str="${UPSTREAMS[*]}"
+# 输出路径
+OUTPUT_FILE="${OUTPUT_FILE:-${TMPDIR:-/tmp}/adguard_home_rules.txt}"
 
-  # 第二步：把前面配置的“自定义域名”写进去
-  echo "# === 你的自定义域名规则 === " >> "$OUTPUT_FILE"
-  for domain in "${CUSTOM_DOMAINS[@]}"; do
-    echo "[/${domain}/]${upstreams_str}" >> "$OUTPUT_FILE"
-  done
-  echo "" >> "$OUTPUT_FILE"
+# ==============================================================================
+# 2. 核心处理引擎 (禁止修改)
+# ==============================================================================
 
-  # 第三步：处理从网上下载的规则列表
-  echo "# === 在线订阅的域名规则 === " >> "$OUTPUT_FILE"
-  
-  # 使用 AWK 这个文字处理神器来逐行改造下载好的文件
-  awk -v dns_servers="${upstreams_str}" '
+# 创建双路临时文件（下载缓存 + 组装缓存），保证过程绝对安全
+TMP_DL="$(mktemp)"
+TMP_OUT="$(mktemp)"
+trap 'rm -f "$TMP_DL" "$TMP_OUT"' EXIT
+
+mkdir -p "$(dirname "$OUTPUT_FILE")"
+
+# 通用清洗函数：剔除回车、剔除首尾空格、剔除空行和注释、转小写
+# 通过 AWK 将上游 DNS 合并为单行 (用空格分割)
+UPSTREAMS_STR=$(echo "$UPSTREAM_DNS_CONFIG" | awk '
   {
-      # 1. 删掉可能存在的隐藏回车符（修复 Windows/Linux 换行格式冲突问题）
-      gsub(/\r$/, "", $0);
-      
-      # 2. 如果遇到空行，或者以 # 开头的注释，直接跳过，看下一行
-      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/) next;
-      
-      # 3. 抹除域名前面多余的 "."（比如把 .abc.com 变成 abc.com）
-      if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
-      
-      # 4. 把域名和 DNS 拼装成 AdGuard Home 看得懂的样子并输出
-      printf "[/%s/]%s\n", $0, dns_servers;
+    sub(/\r$/, ""); sub(/^[ \t]+|[ \t]+$/, "");
+    if ($0 == "" || /^#/) next;
+    printf tolower($0) " "
   }
-  ' "$TMP_FILE" >> "$OUTPUT_FILE"
+' | sed 's/ $//')
 
-  echo "✨ 规则文件处理完毕！已经妥善保存在：$OUTPUT_FILE"
-}
+# 定义 AWK 域名处理脚本（统一复用，性能极高）
+AWK_DOMAIN_SCRIPT='
+  {
+    sub(/\r$/, ""); sub(/^[ \t]+|[ \t]+$/, "");
+    if ($0 == "" || /^#/) next;
+    $0 = tolower($0);
+    if (substr($0, 1, 1) == ".") $0 = substr($0, 2);
+    printf "[/%s/]%s\n", $0, dns;
+  }
+'
 
-# ================================================================
-# 4. 启动脚本 (一切从这里开始)
-# ================================================================
+# ==============================================================================
+# 3. 执行逻辑
+# ==============================================================================
 
-# 如果下载成功，就接着去格式化处理；如果失败，脚本直接退出
-if download_rules; then
-  format_rules
-else
+echo "🔄 正在下载在线规则..."
+download_success=false
+for url in "${DOWNLOAD_URLS[@]}"; do
+  if curl -fsSL --compressed --connect-timeout 15 --retry 2 -o "$TMP_DL" "$url"; then
+    echo "✅ 下载成功！"
+    download_success=true
+    break
+  fi
+  echo "⚠️ 链接 $url 下载失败，尝试备用..."
+done
+
+if ! $download_success; then
+  echo "❌ 所有链接均下载失败，请检查网络！"
   exit 1
 fi
+
+echo "📝 正在高速生成与组装配置..."
+
+# 将所有内容先安全地写入临时输出文件（防止写入一半时脚本崩溃导致文件损坏）
+{
+  # 1. 写入全局 DNS
+  echo "# === 全局基础 DNS ==="
+  echo "$GLOBAL_DNS_CONFIG" | awk '
+    {
+      sub(/\r$/, ""); sub(/^[ \t]+|[ \t]+$/, "");
+      if ($0 == "" || /^#/) next;
+      print tolower($0)
+    }'
+  echo ""
+
+  # 2. 写入自定义域名规则
+  echo "# === 你的自定义域名规则 === "
+  echo "$CUSTOM_DOMAINS_CONFIG" | awk -v dns="$UPSTREAMS_STR" "$AWK_DOMAIN_SCRIPT"
+  echo ""
+
+  # 3. 写入在线订阅规则
+  echo "# === 在线订阅的域名规则 === "
+  awk -v dns="$UPSTREAMS_STR" "$AWK_DOMAIN_SCRIPT" "$TMP_DL"
+
+} > "$TMP_OUT"
+
+# 4. 【核心细节】使用 cat 覆盖，而不是直接 mv
+# 原因：如果你的 OUTPUT_FILE 是 Docker 映射出来的文件，使用 mv 会改变文件的 inode，导致 Docker 热重载失效！
+# 使用 cat 覆写可以完美保留原文件的 inode 和权限属性。
+cat "$TMP_OUT" > "$OUTPUT_FILE"
+
+echo "✨ 规则文件处理完毕！已经安全写入："
+echo "📁 $OUTPUT_FILE"
