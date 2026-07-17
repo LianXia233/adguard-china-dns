@@ -77,14 +77,20 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # 增加 --limit 100 确保能彻底拉取并清理历史残留版本
-        old_tags=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -v "^${{ env.TAG_NAME }}$")
+        # 严格提取非当前 Tag 的历史版本，末尾追加 || true 规避 grep 找不到匹配项时的退出码问题
+        old_tags=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -vx "${{ env.TAG_NAME }}" || true)
         
         if [ -n "$old_tags" ]; then
           for tag in $old_tags; do
-            echo "💥 正在移除过期版本: $tag"
-            gh release delete "$tag" --cleanup-tag --yes
+            echo "🗑 正在删除 Release：$tag"
+            
+            # 1. 尝试删除 Release 壳子，失败也继续（兼容孤儿或已被手动干掉的 Release）
+            gh release delete "$tag" --yes || true
+            
+            # 2. 尝试强行推送空分支到该远端 Tag 引用执行删除，静默且容错
+            git push origin ":refs/tags/$tag" >/dev/null 2>&1 || true
           done
+          echo "✅ 历史 Release 清理完成"
         else
           echo "✨ 暂无旧版本需要清理。"
         fi
