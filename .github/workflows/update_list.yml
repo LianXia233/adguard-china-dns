@@ -1,11 +1,12 @@
-name: 更新 AdGuard Home 规则
+name: 🔄 更新 AdGuard Home 规则
 
 on:
   schedule:
     - cron: "30 23 * * *"  # 每天 UTC 时间 23:30 (对应北京时间上午 7:30) 触发
   push:
-    branches:
-      - main  # 监听 main 分支的推送事件
+    paths:
+      - 'config/**'
+      - 'generate_formatted_list.sh'
   workflow_dispatch:  # 支持手动触发工作流
 
 permissions:
@@ -18,59 +19,79 @@ jobs:
       RULES_FILE: /tmp/adguard_home_rules.txt
 
     steps:
-    # 步骤 1: 检出当前仓库代码 (升级至 v4)
-    - name: 检出代码
+    - name: 📥 检出代码
       uses: actions/checkout@v4
 
-    # 步骤 2: 赋予权限并执行脚本，同时验证文件是否生成
-    - name: 运行脚本生成规则文件
+    - name: ⚙️ 编译并生成规则文件
       run: |
         chmod +x generate_formatted_list.sh
         OUTPUT_FILE="$RULES_FILE" ./generate_formatted_list.sh
         
-        # 检查文件是否成功生成，若未生成则报错并中断工作流
         if [ ! -f "$RULES_FILE" ]; then
-          echo "❌ 错误：规则文件 $RULES_FILE 未成功生成！"
+          echo "🚨 致命错误：规则文件 $RULES_FILE 未能成功生成！"
           exit 1
         fi
 
-    # 步骤 3: 生成 Release 元数据 (使用北京时间)
-    - name: 生成发布版本信息
+    - name: 💾 同步配置文件至代码库
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        git add config/ || true
+        
+        if git diff --staged --quiet; then
+          echo "🙈 配置文件无变更，跳过同步。"
+        else
+          git commit -m "chore(config): 🤖 同步最新配置文件 [skip ci]"
+          git push
+          echo "🚀 配置文件已成功保存至代码仓库！"
+        fi
+
+    - name: 🏷️ 生成版本与时间标签
       run: |
         # 设置时区为亚洲/上海 (北京时间)
         export TZ='Asia/Shanghai'
         
-        # 格式化当前时间作为 Tag 和标题
-        echo "TAG_NAME=rules-$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
-        echo "RELEASE_NAME=AdGuard 规则更新 ($(date +'%Y-%m-%d %H:%M:%S'))" >> "$GITHUB_ENV"
+        # 将格式化后的时间保存为环境变量供下一步使用
+        echo "UPDATE_TIME=$(date +'\%Y-\%m-\%d \%H:\%M:\%S')" >> "$GITHUB_ENV"
+        echo "TAG_NAME=rules-$(date +'\%Y\%m\%d-\%H\%M\%S')" >> "$GITHUB_ENV"
+        echo "RELEASE_NAME=🚀 规则自动更新 ($(date +'\%Y-\%m-\%d'))" >> "$GITHUB_ENV"
 
-    # 步骤 4: 上传规则文件到 Releases
-    - name: 发布至 GitHub Releases
+    - name: 📦 发布至 GitHub Releases
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.TAG_NAME }}
         name: ${{ env.RELEASE_NAME }}
         files: ${{ env.RULES_FILE }}
         body: |
-          🤖 **自动更新完成**
-          这是由 GitHub Actions 自动生成的最新 AdGuard Home 规则文件。
+          ✨ **AdGuard Home 规则已成功更新！**
+          
+          🕒 **构建时间**: ${{ env.UPDATE_TIME }} (北京时间)
+          
+          ### 🔗 订阅链接 (永久最新版)
+          ```text
+          [https://github.com/$](https://github.com/$){{ github.repository }}/releases/latest/download/adguard_home_rules.txt
+          ```
+          
+          💡 **使用方法**：
+          将上方链接复制，并添加到 AdGuard Home 的 **过滤器 -> DNS 重写** 或 **自定义规则** 中即可。
+          
+          ---
+          *🤖 本发布由 GitHub Actions 全自动构建并部署。*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 步骤 5: 清理历史 Releases，仅保留刚才发布的最新版本
-    - name: 清理历史 Releases
+    - name: 🧹 清理旧版本 Release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # 获取所有旧版本的 Tag (排除刚刚生成的最新 Tag)
         old_tags=$(gh release list --json tagName --jq '.[].tagName' | grep -v "^${{ env.TAG_NAME }}$")
         
         if [ -n "$old_tags" ]; then
           for tag in $old_tags; do
-            echo "🗑️ 正在删除旧版本: $tag"
-            # --cleanup-tag 参数会在删除 release 的同时删除对应的 tag
+            echo "💥 正在移除过期版本: $tag"
             gh release delete "$tag" --cleanup-tag --yes
           done
         else
-          echo "✅ 没有需要清理的旧版本。"
+          echo "✨ 暂无旧版本需要清理。"
         fi
