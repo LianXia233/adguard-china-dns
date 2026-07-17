@@ -1,197 +1,135 @@
-# 🚀 AdGuard Home 国内外域名 DNS 分流规则
-
-**AI 生成 · 自动更新 · 开箱即用**
-
-一套专为 **AdGuard Home** 打造的高质量 **国内外域名 DNS 分流规则**。  
-自动同步上游规则，智能区分国内/国外域名，支持 DoH、DoT、DoQ、HTTP/3 等多种加密协议。
-
-<p align="center">
-  <img src="https://img.shields.io/badge/AI-Generated-blueviolet?style=for-the-badge" alt="AI Generated"/>
-  <img src="https://img.shields.io/badge/Auto--Update-success?style=for-the-badge" alt="Auto Update"/>
-  <img src="https://img.shields.io/badge/AdGuard-Home-67B279?style=for-the-badge" alt="AdGuard Home"/>
-  <img src="https://img.shields.io/badge/Encrypted-DNS-0A84FF?style=for-the-badge" alt="Encrypted DNS"/>
-  <img src="https://img.shields.io/badge/License-GPLv3-red?style=for-the-badge" alt="GPLv3"/>
-</p>
-
 <div align="center">
-  <strong>🤖 AI 驱动 · ⚡ 每日自动同步 · 📦 GitHub Releases 订阅</strong>
+
+# 🚀 AdGuard Home 智能分流黑科技
+
+<p><b>精细化清洗 · 跨文件多源联合去重 · 极致双源抗灾避坑方案</b></p>
+
+[![AI Powered](https://img.shields.io/badge/AI--Engine-Empowered-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)](https://github.com)
+[![Auto Update](https://img.shields.io/badge/Workflow-Daily--Auto-07C160?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com)
+[![AdGuard Home](https://img.shields.io/badge/AdGuard-Home--Ready-67B279?style=for-the-badge&logo=adguard&logoColor=white)](https://github.com)
+[![Robustness](https://img.shields.io/badge/Robustness-Production--Grade-0A84FF?style=for-the-badge&logo=linux&logoColor=white)](https://github.com)
+
+✨ **数据动态洗涤 · 自动规整前缀 · 历史无缝滚动清理 · 打造极致清爽的 DNS 体验** ✨
+
+---
 </div>
 
----
+## 💎 项目简介
 
-## ✨ 项目简介
+本项目是一套专为 **AdGuard Home** 打造的高质量国内外域名 DNS 分流规则自动化编译方案。核心调度引擎由 `generate_formatted_list.sh` 脚本和 GitHub Actions 强力驱动。
 
-本项目专为 **AdGuard Home** 提供高质量的**国内外域名 DNS 分流规则**。
+区别于市面上普通的文本无脑拼接工具，本项目内置了**工业级防崩溃防护网**：强制 IPv4 优先、Gzip 压缩传输、5次深度容错重试，并配合 `wc -l` 拦截 CDN 恶意劫持。同时搭载了高并发 **AWK 哈希联合算法**，自动实现跨文件全局去重（本地自定义规则拥有至高无上的绝对优先级），为您洗净每一行脏数据。
 
-脚本 `generate_formatted_list.sh` 通过 GitHub Actions 实现全自动化：**自动下载 Loyalsoldier 上游规则 → 容灾切换 → 合并自定义域名 → 写入全局 DNS → 格式化输出**，真正做到每日无人值守更新。
-
-> 💡 **核心脚本、Actions 工作流及生成逻辑全部由 AI 构建与优化。**
+> 💡 **核心脚本、工程架构、边界防线及 Release 回滚逻辑均由 AI 模块化重构与精雕细琢。**
 
 ---
 
-## 🌟 项目亮点
+## ⚡ 核心亮点
 
-| 功能                  | 说明 |
-|-----------------------|------|
-| 🤖 **AI 驱动开发**    | 核心脚本与自动化流程均由 AI 编写并持续优化 |
-| ⚙️ **全自动生成**     | 上游下载、清洗、去重、校验一气呵成 |
-| 🔄 **每日同步**       | GitHub Actions 定时抓取最新规则变化 |
-| 📦 **自动发布**       | 新规则自动打包上传至 GitHub Releases（直链订阅） |
-| 🌏 **智能分流**       | 国内域名高速直连，国外域名防污染 |
-| 🔐 **加密协议支持**   | 完美兼容 DoH、DoT、DoQ、HTTP/3 |
-| 🚀 **容灾机制**       | GitHub Raw + jsDelivr CDN 双源自动切换 |
-| 📝 **高度自定义**     | 通过 `CUSTOM_DOMAINS` 添加个人白名单 |
+| 模块图标 | 特征维度 | 生产级技术细节描述 |
+| :---: | :--- | :--- |
+| 🤖 | **AI 顶配流控** | 拒绝面条代码，边界容错与流控逻辑经过 AI 精确剪裁与多轮压测 |
+| 🧹 | **跨文件联合去重** | 采用高效 AWK 哈希表，在线几万行域名若与自定义冲突，**自动无感抹除** |
+| 🧼 | **乱码与脏数据防火墙** | 强正则匹配，自动剥离 `DOMAIN,` 等前缀与开头的点，无情丢弃非法字符行 |
+| 📡 | **硬核抗灾网络** | 强制 `curl -4` 避开部分 VPS 抽风的 IPv6，双源备用 CDN 全自动切换探活 |
+| 💾 | **配置回交同步** | 首次运行自动生成模板，变更无感同步回交至仓库，支持随时在网页端修改 |
+| 🧹 | **无缝单 Release 滚动** | 独创“孤儿 Release 容错清理机制”，分离式推空引用擦除旧 Tag，让仓库纤尘不染 |
 
 ---
 
-## 🏗️ 项目架构
+## 📂 模块化目录结构
 
-### 项目工作流
+项目在首次运行后，会自动在根目录下建立 `config/` 矩阵。您可以直接在 GitHub 网页端点击对应的文件点“铅笔图标”直接增删：
 
-```mermaid
-flowchart TB
-    User["👤 用户"]
-    Repo["📦 GitHub 仓库"]
-    Workflow["🤖 GitHub Actions"]
-    Source["📄 上游规则<br/>Loyalsoldier/surge-rules"]
-    Custom["⭐ CUSTOM_DOMAINS"]
-    Script["⚙️ generate_formatted_list.sh"]
-    Release["📦 GitHub Releases"]
-    AdGuard["🛡️ AdGuard Home"]
+```text
+└── 📂 config
+    ├── 📄 dns_global.txt      # 全局基础 DNS（规则未命中时使用的底层备用解析，如 Google/Cloudflare）
+    ├── 📄 dns_upstream.txt    # 国内自定义上游（针对分流域名绑定的高速解析，如腾讯/阿里/火山引擎）
+    └── 📄 domain_custom.txt   # 专属白名单（最高优先级自定义域名，在此处的域名自动在在线规则中去重）
 
-    User --> AdGuard
-    Source --> Workflow
-    Custom --> Script
-    Workflow --> Script
-    Script --> Release
-    Release --> AdGuard
-```
-
-### AI 自动化构建流程
-
-```mermaid
-flowchart TD
-    Start([🕖 定时触发]) --> Download["📥 下载 direct.txt<br/>Raw → jsDelivr 容灾"]
-    Download --> Check{"下载成功？"}
-    Check -- ✅ 是 --> Global["📝 写入全局基础 DNS"]
-    Check -- ❌ 否 --> Fail["❌ 退出"]
-    
-    Global --> CustomSection["✍️ 添加 CUSTOM_DOMAINS 规则"]
-    CustomSection --> Online["🧹 处理在线规则<br/>去注释、空行、格式化"]
-    Online --> Output["💾 保存 adguard_home_rules.txt"]
-    Output --> Release["🚀 发布 Releases"]
-    Release --> Finish([🎉 完成])
-```
-
-### DNS 解析决策树
-
-```mermaid
-flowchart TD
-    Query([收到 DNS 请求]) --> GlobalCheck{"命中全局？"}
-    GlobalCheck -- 是 --> GlobalDNS["全局基础 DNS<br/>(Google/Cloudflare 等)"]
-    
-    GlobalCheck -- 否 --> CustomCheck{"命中 CUSTOM_DOMAINS？"}
-    CustomCheck -- 是 --> CustomDNS["自定义 UPSTREAMS<br/>(腾讯/阿里等)"]
-    
-    CustomCheck -- 否 --> OnlineCheck{"命中在线规则？"}
-    OnlineCheck -- 是 --> OnlineDNS["自定义 UPSTREAMS"]
-    OnlineCheck -- 否 --> GlobalDNS
-    
-    GlobalDNS --> Result([返回解析结果])
-    CustomDNS --> Result
-    OnlineDNS --> Result
 ```
 
 ---
 
-## 🚀 核心功能
+## 🚀 终极保姆级教程
 
-### 🇨🇳 国内域名解析
-`CUSTOM_DOMAINS` + 在线下载的国内域名规则统一使用自定义 `UPSTREAMS`（腾讯/阿里等高速节点）。
+### 🔷 第一步：一键克隆与赋权
 
-### 🌍 全局解析
-未命中规则的域名使用脚本内置的全局 DNS 列表（Google、Cloudflare、AdGuard 等）。
+1. **Fork 本仓库**：点击页面右上角的 **`Fork`** 按钮，将完整的项目克隆到你自己的 GitHub 账号下。
+2. **开启 Actions 写入权限**（*非常重要，否则无法生成 Release*）：
+* 进入你 Fork 后的个人仓库，依次点击 **`Settings`** ➡️ **`Actions`** ➡️ **`General`**。
+* 翻到页面最底部，找到 **Workflow permissions** 模块。
+* 将默认的只读权限修改为 **`Read and write permissions`**（允许工作流读写、创建和删除 Release）。
+* 点击 **`Save`** 按钮保存。
 
-### ⭐ 自定义白名单 (`CUSTOM_DOMAINS`)
-支持添加游戏、国服、私有域名等，强制走自定义上游 DNS。
 
-### 🔁 自动容灾下载
-优先 GitHub Raw，失败自动切换 jsDelivr CDN。
+
+### 🔷 第二步：手动触发激活
+
+1. 点击仓库顶部的 **`Actions`** 标签页。
+2. 在左侧列表中选中 **`🔄 更新 AdGuard Home 规则`** 工作流。
+3. 点击右侧的 **`Run workflow`** 下拉菜单，点击绿色的 **`Run workflow`** 按钮手动执行一次。
+4. **验证结果**：当工作流亮起绿灯，你的仓库里会自动出现 `config/` 文件夹；同时右侧的 **Releases** 模块中会产出最新版的规则文件。
+
+### 🔷 第三步：在 AdGuard Home 中享用
+
+由于工作流自带极致的滚动清理机制，你的 Releases 永远只会保留最新且唯一的一份，因此可以直接使用 GitHub 官方的 `latest` 稳定直链进行永久订阅。
+
+1. **组合您的专属订阅直链**：
+将下方文本中的 `你的GitHub用户名` 和 `你的仓库名` 替换为您自己的真实名称：
+```text
+[https://github.com/你的GitHub用户名/你的仓库名/releases/latest/download/adguard_home_rules.txt](https://github.com/你的GitHub用户名/你的仓库名/releases/latest/download/adguard_home_rules.txt)
+
+```
+
+
+2. **挂载到 AdGuard Home**：
+* 登录您的 AdGuard Home 后台。
+* 依次进入 **`过滤器 (Filters)`** ➡️ **`DNS 上游配置 (Upstream DNS settings)`**。
+* 将上方拼接好的专属直链粘贴到 **`上游 DNS 服务器 (Upstream DNS servers)`** 的输入框中。
+* 点击应用。AdGuard Home 此后将会在每天上午 `7:30` 全自动拉取并应用你独家编译的分流规则。
+
+
 
 ---
 
-## 🛰️ 默认 DNS 配置
+## 🧪 本地构建与极速调试
 
-<details>
-<summary><b>全局基础 DNS</b></summary>
-
-- Google DNS
-- Cloudflare DNS
-- AdGuard DNS
-- Applied Privacy 等
-
-</details>
-
-<details>
-<summary><b>自定义 UPSTREAMS（国内优先）</b></summary>
-
-脚本中配置的 `UPSTREAMS` 数组（腾讯、阿里 DoH/DoT 等）
-</details>
-
----
-
-## 🌐 上游规则来源
-
-核心数据来自 **[Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules)** 的 `direct.txt`。
-
----
-
-## 🛠️ 本地构建
+如果您想在本地 Linux / macOS 宿主机环境或 Docker 容器内进行沙盒测试，只需几行命令：
 
 ```bash
+# 1. 赋予核心脚本可执行权限
 chmod +x generate_formatted_list.sh
+
+# 2. 纯净运行 (默认会将最终规则原子覆盖输出至 /tmp/adguard_home_rules.txt)
 ./generate_formatted_list.sh
+
+# 💡 提示：如果您希望自定义本地的输出路径，可以通过环境变量直接指定：
+OUTPUT_FILE="./my_adguard_rules.txt" ./generate_formatted_list.sh
+
 ```
 
-- 默认输出：`/tmp/adguard_home_rules.txt`
-- 自定义输出：`OUTPUT_FILE=/path/to/rules.txt ./generate_formatted_list.sh`
-
----
-
-## 📦 推荐订阅方式
-
-**推荐直接订阅 GitHub Releases 中的每日自动规则文件**，AdGuard Home 可自动更新，无需本地运行脚本。
+运行完成后，终端会向您呈现一份非常精美的 **📊 编译统计报告**，精准展示各类去重后的规则行数。
 
 ---
 
 ## ⚠️ 注意事项
 
-- 确保宿主机网络畅通
-- 可修改脚本中的 `UPSTREAMS` 和 `CUSTOM_DOMAINS`
-- 私有域名建议写入 `CUSTOM_DOMAINS`
+* 🛠️ **严禁在脚本内硬编码修改变量**：所有的 DNS 服务器与域名资产均已外置到 `config/` 的文本文件中。修改规则请直接对文本文件下手。
+* 📝 **自定义域名规范**：在 `config/domain_custom.txt` 中追加域名时，只需写纯域名即可（例如 `example.com`），底层的过滤引擎会自动为你兼容、规整大小写及各种变体。
 
 ---
 
 ## 📜 许可协议
 
-脚本基于 **GPLv3** 开源。域名规则数据归原仓库所有，请遵守其协议。
+* 本项目的流控调度与全自动化编译脚本基于 **GPLv3** 开源协议授权。
+* 上游域名原始规则数据归原作者所有，请自觉遵守 **Loyalsoldier/surge-rules** 仓库的相关数据授权及衍生协议。
 
 ---
 
-<div align="center">
+## 💖 凝聚匠心 · 鸣谢支持
 
-## ❤️ 项目承诺
+**公共规则自动同步 🪐 私有规则随心维护 🪐 工业级稳定可靠**
 
-| 图标 | 承诺 |
-|------|------|
-| 🤖 | AI 驱动核心逻辑 |
-| ⚙️ | 全自动规则处理 |
-| 🔄 | 每日定时同步 |
-| 📦 | Releases 多 CDN |
-| 📝 | 轻量自定义 |
-
-**公共规则自动同步 · 私有规则随心维护 · 稳定可靠**
-
-⭐ **欢迎 Star 支持！**
-
-</div>
+如果你觉得这个自动化方案极大地拯救了你的精神内耗、让你的 AdGuard 规则维护变得优雅起来，
+请为本项目点一个宝贵的 ⭐ **Star**！这是对 AI 持续迭代与打磨的最大认可！
