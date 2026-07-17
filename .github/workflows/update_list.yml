@@ -9,6 +9,10 @@ on:
       - 'generate_formatted_list.sh'
   workflow_dispatch:  # 支持手动触发工作流
 
+# 🌟 全局环境变量：强制允许兼容，压制 Node 20 弃用警告，保持 Actions 界面干净整洁
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+
 permissions:
   contents: write  # 允许工作流创建和删除 Release 及 Tag
 
