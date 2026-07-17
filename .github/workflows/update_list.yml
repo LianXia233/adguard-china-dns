@@ -53,9 +53,9 @@ jobs:
         export TZ='Asia/Shanghai'
         
         # 严格遵循原生 Bash 语法，拒绝任何多余的斜杠转义
-        echo "UPDATE_TIME=$(date '+\%Y-\%m-\%d \%H:\%M:\%S')" >> "$GITHUB_ENV"
-        echo "TAG_NAME=rules-$(date '+\%Y\%m\%d-\%H\%M\%S')" >> "$GITHUB_ENV"
-        echo "RELEASE_NAME=🚀 规则自动更新 ($(date '+\%Y-\%m-\%d'))" >> "$GITHUB_ENV"
+        echo "UPDATE_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+        echo "TAG_NAME=rules-$(date '+%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+        echo "RELEASE_NAME=🚀 规则自动更新 ($(date '+%Y-%m-%d'))" >> "$GITHUB_ENV"
 
     - name: 📦 发布至 GitHub Releases
       uses: softprops/action-gh-release@v2
@@ -67,14 +67,6 @@ jobs:
           ✨ **AdGuard Home 规则已成功更新！**
           
           🕒 **构建时间**: ${{ env.UPDATE_TIME }} (北京时间)
-          
-          ### 🔗 订阅链接 (永久最新版)
-          ```text
-          [https://github.com/$](https://github.com/$){{ github.repository }}/releases/latest/download/adguard_home_rules.txt
-          ```
-          
-          💡 **使用方法**：
-          将上方链接复制，并添加到 AdGuard Home 的 **过滤器 -> DNS 重写** 或 **自定义规则** 中即可。
           
           ---
           *🤖 本发布由 GitHub Actions 全自动构建并部署。*
