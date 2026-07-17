@@ -1,26 +1,26 @@
 <div align="center">
 
-# 🚀 AdGuard Home 智能分流黑科技
+# 🚀 AdGuard Home 智能分流核心编译引擎
 
-<p><b>精细化清洗 · 跨文件多源联合去重 · 极致双源抗灾避坑方案</b></p>
+<p><b>本地轻量化清洗 · 跨文件多源联合去重 · 极致双源抗灾避坑方案</b></p>
 
 [![AI Powered](https://img.shields.io/badge/AI--Engine-Empowered-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)](https://github.com)
-[![Auto Update](https://img.shields.io/badge/Workflow-Daily--Auto-07C160?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-0A84FF?style=for-the-badge&logo=linux&logoColor=white)](https://github.com)
 [![AdGuard Home](https://img.shields.io/badge/AdGuard-Home--Ready-67B279?style=for-the-badge&logo=adguard&logoColor=white)](https://github.com)
-[![Robustness](https://img.shields.io/badge/Robustness-Production--Grade-0A84FF?style=for-the-badge&logo=linux&logoColor=white)](https://github.com)
+[![License](https://img.shields.io/badge/License-GPLv3-red?style=for-the-badge)](https://github.com)
 
-✨ **数据动态洗涤 · 自动规整前缀 · 历史无缝滚动清理 · 打造极致清爽的 DNS 体验** ✨
+✨ **数据动态洗涤 · 自动规整前缀 · 纯净本地编译 · 打造极致清爽的 DNS 体验** ✨
 
 ---
 </div>
 
 ## 💎 项目简介
 
-本项目是一套专为 **AdGuard Home** 打造的高质量国内外域名 DNS 分流规则自动化编译方案。核心调度引擎由 `generate_formatted_list.sh` 脚本和 GitHub Actions 强力驱动。
+本项目是一套专为 **AdGuard Home** 打造的高质量国内外域名 DNS 分流规则本地化编译方案。核心调度依赖纯粹的本地 Shell 脚本 `generate_formatted_list.sh` 驱动，不依赖任何第三方云端工作流。
 
 区别于市面上普通的文本无脑拼接工具，本项目内置了**工业级防崩溃防护网**：强制 IPv4 优先、Gzip 压缩传输、5次深度容错重试，并配合 `wc -l` 拦截 CDN 恶意劫持。同时搭载了高并发 **AWK 哈希联合算法**，自动实现跨文件全局去重（本地自定义规则拥有至高无上的绝对优先级），为您洗净每一行脏数据。
 
-> 💡 **核心脚本、工程架构、边界防线及 Release 回滚逻辑均由 AI 模块化重构与精雕细琢。**
+> 💡 **核心脚本、工程架构、边界防线及文本规整逻辑均由 AI 模块化重构与精雕细琢。**
 
 ---
 
@@ -31,15 +31,14 @@
 | 🤖 | **AI 顶配流控** | 拒绝面条代码，边界容错与流控逻辑经过 AI 精确剪裁与多轮压测 |
 | 🧹 | **跨文件联合去重** | 采用高效 AWK 哈希表，在线几万行域名若与自定义冲突，**自动无感抹除** |
 | 🧼 | **乱码与脏数据防火墙** | 强正则匹配，自动剥离 `DOMAIN,` 等前缀与开头的点，无情丢弃非法字符行 |
-| 📡 | **硬核抗灾网络** | 强制 `curl -4` 避开部分 VPS 抽风的 IPv6，双源备用 CDN 全自动切换探活 |
-| 💾 | **配置回交同步** | 首次运行自动生成模板，变更无感同步回交至仓库，支持随时在网页端修改 |
-| 🧹 | **无缝单 Release 滚动** | 独创“孤儿 Release 容错清理机制”，分离式推空引用擦除旧 Tag，让仓库纤尘不染 |
+| 📡 | **硬核抗灾网络** | 强制 `curl -4` 避开部分宿主机抽风的 IPv6，双源备用 CDN 全自动切换探活 |
+| 💾 | **配置模板自生成** | 首次运行自动检测并生成规范的资产模板文件，降低初次上手门槛 |
 
 ---
 
 ## 📂 模块化目录结构
 
-项目在首次运行后，会自动在根目录下建立 `config/` 矩阵。您可以直接在 GitHub 网页端点击对应的文件点“铅笔图标”直接增删：
+项目在首次运行后，会自动在根目录下建立 `config/` 矩阵。您可以直接使用文本编辑器对对应的文件进行直接增删：
 
 ```text
 └── 📂 config
@@ -51,65 +50,57 @@
 
 ---
 
-## 🚀 终极保姆级教程
+## 🚀 脚本使用与手动配置教程
 
-### 🔷 第一步：一键克隆与赋权
+### 🔷 第一步：环境准备与资产配置
 
-1. **Fork 本仓库**：点击页面右上角的 **`Fork`** 按钮，将完整的项目克隆到你自己的 GitHub 账号下。
-2. **开启 Actions 写入权限**（*非常重要，否则无法生成 Release*）：
-* 进入你 Fork 后的个人仓库，依次点击 **`Settings`** ➡️ **`Actions`** ➡️ **`General`**。
-* 翻到页面最底部，找到 **Workflow permissions** 模块。
-* 将默认的只读权限修改为 **`Read and write permissions`**（允许工作流读写、创建和删除 Release）。
-* 点击 **`Save`** 按钮保存。
-
-
-
-### 🔷 第二步：手动触发激活
-
-1. 点击仓库顶部的 **`Actions`** 标签页。
-2. 在左侧列表中选中 **`🔄 更新 AdGuard Home 规则`** 工作流。
-3. 点击右侧的 **`Run workflow`** 下拉菜单，点击绿色的 **`Run workflow`** 按钮手动执行一次。
-4. **验证结果**：当工作流亮起绿灯，你的仓库里会自动出现 `config/` 文件夹；同时右侧的 **Releases** 模块中会产出最新版的规则文件。
-
-### 🔷 第三步：在 AdGuard Home 中享用
-
-由于工作流自带极致的滚动清理机制，你的 Releases 永远只会保留最新且唯一的一份，因此可以直接使用 GitHub 官方的 `latest` 稳定直链进行永久订阅。
-
-1. **组合您的专属订阅直链**：
-将下方文本中的 `你的GitHub用户名` 和 `你的仓库名` 替换为您自己的真实名称：
-```text
-[https://github.com/你的GitHub用户名/你的仓库名/releases/latest/download/adguard_home_rules.txt](https://github.com/你的GitHub用户名/你的仓库名/releases/latest/download/adguard_home_rules.txt)
-
-```
-
-
-2. **挂载到 AdGuard Home**：
-* 登录您的 AdGuard Home 后台。
-* 依次进入 **`过滤器 (Filters)`** ➡️ **`DNS 上游配置 (Upstream DNS settings)`**。
-* 将上方拼接好的专属直链粘贴到 **`上游 DNS 服务器 (Upstream DNS servers)`** 的输入框中。
-* 点击应用。AdGuard Home 此后将会在每天上午 `7:30` 全自动拉取并应用你独家编译的分流规则。
+1. **准备配置文件**：首次在本地运行脚本时，脚本会自动创建 `config/` 目录及 3 个初始化文本。
+2. **填入你的自定义规则**：
+* 打开 `config/domain_custom.txt` 写入你个人的专属域名。
+* 打开 `config/dns_upstream.txt` 写入你国内上游 DNS 服务的地址。
+* 打开 `config/dns_global.txt` 写入未命中分流时的全局兜底 DNS。
 
 
 
----
+### 🔷 第二步：运行脚本生成规则
 
-## 🧪 本地构建与极速调试
-
-如果您想在本地 Linux / macOS 宿主机环境或 Docker 容器内进行沙盒测试，只需几行命令：
+只需几行命令，即可在本地编译规则并输出。**为了便于管理，强烈建议将生成的规则文件与 AdGuard Home 的配置文件（`AdGuardHome.yaml`）存放在同一个目录下。**
 
 ```bash
 # 1. 赋予核心脚本可执行权限
 chmod +x generate_formatted_list.sh
 
-# 2. 纯净运行 (默认会将最终规则原子覆盖输出至 /tmp/adguard_home_rules.txt)
-./generate_formatted_list.sh
-
-# 💡 提示：如果您希望自定义本地的输出路径，可以通过环境变量直接指定：
-OUTPUT_FILE="./my_adguard_rules.txt" ./generate_formatted_list.sh
+# 2. 编译并输出规则文件（⚠️ 路径仅为示例，请根据自己设备的实际安装路径进行修改）
+# 示例：假设您的 AdGuardHome.yaml 位于 /etc/adguardhome/ 目录下
+sudo OUTPUT_FILE="/etc/adguardhome/adguard_home_rules.txt" ./generate_formatted_list.sh
 
 ```
 
-运行完成后，终端会向您呈现一份非常精美的 **📊 编译统计报告**，精准展示各类去重后的规则行数。
+运行完成后，终端会向您呈现一份非常精美的 **📊 编译统计报告**，精准展示各类去重、清洗后的规则总行数。
+
+### 🔷 第三步：修改 AdGuard 配置文件
+
+生成规则文件后，需要通过修改 AdGuard Home 的核心配置文件 `AdGuardHome.yaml`，使其指向该外部规则路径：
+
+1. **修改配置文件**：打开您的 AdGuard Home 主配置文件（`AdGuardHome.yaml`），在对应配置项中修改或添加以下路径（请确保路径与第二步中填写的绝对路径完全一致）：
+```yaml
+# 💡 提示：此路径仅为示例，请确保该文件与 AdGuardHome.yaml 处于同一配置目录下
+upstream_dns_file: /etc/adguardhome/adguard_home_rules.txt
+
+```
+
+
+2. **重启服务生效**：保存配置文件后，重启 AdGuard Home 服务使配置与新规则立即生效：
+```bash
+# 宿主机原生部署重启命令
+sudo systemctl restart AdGuardHome
+
+# 如果使用 Docker 部署，请重启对应的容器
+docker restart adguardhome
+
+```
+
+
 
 ---
 
@@ -132,4 +123,4 @@ OUTPUT_FILE="./my_adguard_rules.txt" ./generate_formatted_list.sh
 **公共规则自动同步 🪐 私有规则随心维护 🪐 工业级稳定可靠**
 
 如果你觉得这个自动化方案极大地拯救了你的精神内耗、让你的 AdGuard 规则维护变得优雅起来，
-请为本项目点一个宝贵的 ⭐ **Star**！这是对 AI 持续迭代与打磨的最大认可！
+请为本项目点一个宝贵的 ⭐ **Star**！
