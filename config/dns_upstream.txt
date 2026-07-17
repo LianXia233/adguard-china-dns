@@ -1,0 +1,5 @@
+https://sm2.doh.pub/dns-query
+tls://dot.pub
+https://doh.pub/dns-query
+https://doh.volcengine.com/dns-query
+tls://dot.volcengine.com
