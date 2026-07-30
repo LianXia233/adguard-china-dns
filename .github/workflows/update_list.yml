@@ -2,7 +2,7 @@ name: 🔄 更新 AdGuard Home 规则
 
 on:
   schedule:
-    - cron: "30 23 * * *"  # 每天 UTC 时间 23:30 (对应北京时间上午 7:30) 触发
+    - cron: "0 23 * * *"  # 每天 UTC 时间 23:00 (对应北京时间上午 7:00) 触发
   push:
     paths:
       - 'config/**'
@@ -68,12 +68,31 @@ jobs:
         name: ${{ env.RELEASE_NAME }}
         files: ${{ env.RULES_FILE }}
         body: |
-          ✨ **AdGuard Home 规则已成功更新！**
+          ## 📋 AdGuard Home DNS 分流规则
           
           🕒 **构建时间**: ${{ env.UPDATE_TIME }} (北京时间)
           
+          ### 📦 使用方式
+          
+          下载 `adguard_home_rules.txt`，在 AdGuard Home 配置文件 `AdGuardHome.yaml` 中设置：
+          
+          ```yaml
+          dns:
+            upstream_dns_file: /path/to/adguard_home_rules.txt
+          ```
+          
+          重启 AdGuard Home 即可生效。
+          
+          ### 📌 规则说明
+          
+          | 规则类型 | 说明 |
+          |---|---|
+          | 全局 DNS | 未命中分流规则时的兜底解析（海外 DNS） |
+          | 自定义域名 | `config/domain_custom.txt` 中指定的强制分流域名 |
+          | 在线域名 | 来自 Loyalsoldier/surge-rules 的国内直连域名列表 |
+          
           ---
-          *🤖 本发布由 GitHub Actions 全自动构建并部署。*
+          *🤖 由 GitHub Actions 自动构建 · 每日北京时间 07:00 更新*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
