@@ -61,24 +61,16 @@ jobs:
           tag_name: ${{ steps.timestamp.outputs.tag }}
           name: "${{ steps.timestamp.outputs.datetime }} 更新"
           files: |
-            target/release/adguard-china-dns
             output/adguard_home_rules.txt
           body: |
             ## 自动编译产物
 
             - **更新时间**：${{ steps.timestamp.outputs.datetime }}（北京时间）
-            - **编译目标**：`x86_64-unknown-linux-gnu`
-            - **二进制文件**：`adguard-china-dns`（静态链接，无运行时依赖）
             - **规则文件**：`adguard_home_rules.txt`（可直接导入 AdGuard Home）
 
             ### 使用方式
 
             ```bash
-            # 下载二进制
-            wget https://github.com/${{ github.repository }}/releases/latest/download/adguard-china-dns
-            chmod +x adguard-china-dns
-
-            # 下载规则文件
             wget https://github.com/${{ github.repository }}/releases/latest/download/adguard_home_rules.txt
             ```
           draft: false
