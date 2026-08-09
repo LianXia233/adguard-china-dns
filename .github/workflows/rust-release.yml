@@ -35,48 +35,30 @@ jobs:
           mkdir -p output
           OUTPUT_FILE="output/adguard_home_rules.txt" ./target/release/adguard-china-dns
 
-      - name: 清理历史 Release
-        run: |
-          echo "🧹 正在清理历史 Release ..."
-          RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases")
-          echo "$RELEASES" | python3 -c "
-          import sys, json
-          releases = json.load(sys.stdin)
-          if not isinstance(releases, list):
-              print('无历史 Release 需清理')
-              sys.exit(0)
-          for r in releases:
-              print(f'  删除: {r[\"tag_name\"]}')
-          " 
-          echo "$RELEASES" | python3 -c "
-          import sys, json, subprocess
-          releases = json.load(sys.stdin)
-          if not isinstance(releases, list):
-              sys.exit(0)
-          for r in releases:
-              # 删除 release
-              subprocess.run(['curl', '-s', '-X', 'DELETE',
-                  '-H', 'Authorization: token \${{ secrets.GITHUB_TOKEN }}',
-                  r['url'].replace('https://api.github.com', 'https://api.github.com')], check=False)
-              # 删除 tag
-              subprocess.run(['curl', '-s', '-X', 'DELETE',
-                  '-H', 'Authorization: token \${{ secrets.GITHUB_TOKEN }}',
-                  f'https://api.github.com/repos/\${{ github.repository }}/git/refs/tags/{r[\"tag_name\"]}'], check=False)
-          " || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 生成发布时间戳
+      - name: 获取发布时间
         id: timestamp
         run: |
           TS=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')
+          TAG="v-$(TZ='Asia/Shanghai' date '+%Y%m%d-%H%M')"
           echo "datetime=${TS}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: 清理历史 Release
+        run: |
+          echo "🧹 正在清理历史 Release ..."
+          gh release list --json tagName -q '.[].tagName' 2>/dev/null | while read tag; do
+            [ -z "$tag" ] && continue
+            echo "  删除: $tag"
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          done
+          echo "✅ 清理完成"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v-${{ steps.timestamp.outputs.datetime }}
+          tag_name: ${{ steps.timestamp.outputs.tag }}
           name: "${{ steps.timestamp.outputs.datetime }} 更新"
           files: |
             target/release/adguard-china-dns
@@ -93,11 +75,11 @@ jobs:
 
             ```bash
             # 下载二进制
-            wget https://github.com/${{ github.repository }}/releases/download/v-${{ steps.timestamp.outputs.datetime }}/adguard-china-dns
+            wget https://github.com/${{ github.repository }}/releases/latest/download/adguard-china-dns
             chmod +x adguard-china-dns
 
             # 下载规则文件
-            wget https://github.com/${{ github.repository }}/releases/download/v-${{ steps.timestamp.outputs.datetime }}/adguard_home_rules.txt
+            wget https://github.com/${{ github.repository }}/releases/latest/download/adguard_home_rules.txt
             ```
           draft: false
           prerelease: false
