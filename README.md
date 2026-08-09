@@ -27,20 +27,7 @@ adguard-china-dns/
 
 ## 部署指南
 
-### 方式一：下载预编译二进制
-
-前往 [Releases](https://github.com/LianXia233/adguard-china-dns/releases) 下载最新 `adguard-china-dns` 二进制（`x86_64-unknown-linux-gnu`），附带当日规则文件。
-
-```bash
-wget https://github.com/LianXia233/adguard-china-dns/releases/latest/download/adguard-china-dns
-chmod +x adguard-china-dns
-sudo mv adguard-china-dns /usr/local/bin/
-
-# 同时下载规则文件
-wget https://github.com/LianXia233/adguard-china-dns/releases/latest/download/adguard_home_rules.txt
-```
-
-### 方式二：源码编译
+### 编译
 
 ```bash
 git clone https://github.com/LianXia233/adguard-china-dns.git
@@ -125,6 +112,16 @@ docker restart adguardhome
 
 ---
 
+## 获取预编译规则
+
+GitHub Actions 每日自动编译并发布最新规则文件到 [Releases](https://github.com/LianXia233/adguard-china-dns/releases)。
+
+```bash
+wget https://github.com/LianXia233/adguard-china-dns/releases/latest/download/adguard_home_rules.txt
+```
+
+---
+
 ## GitHub Actions 自动发布
 
 仓库自带 `rust-release.yml`，无需自建 Cron：
@@ -137,7 +134,7 @@ docker restart adguardhome
   1. 编译静态二进制
   2. 运行生成最新规则文件
   3. 清理所有历史 Release
-  4. 创建新 Release（标题为日期时间格式 `2026-08-09 07:00 更新`），附带二进制 + 规则文件
+  4. 创建新 Release（标题格式 `2026-08-09 07:00 更新`），仅附带规则文件
 
 > 本地 Cron 与 GitHub Actions 二选一，避免对同一份输出文件重复写入。
 
@@ -154,7 +151,7 @@ docker restart adguardhome
 | 空上游防护 | `dns_upstream.txt` 为空时域名以注释保留，回退全局 DNS |
 | 配置外置 | DNS 与域名资产外置于 `config/`，升级二进制时配置不丢失 |
 | 原生跨平台 | Linux / macOS / Windows 均可运行 |
-| 自动发布 | GitHub Actions 每日自动编译并发布到 Releases |
+| 自动发布 | GitHub Actions 每日自动编译并发布规则到 Releases |
 
 ---
 
