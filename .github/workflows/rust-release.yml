@@ -45,35 +45,33 @@ jobs:
 
       - name: 清理历史 Release
         run: |
-          echo "🧹 正在清理历史 Release ..."
+          echo "正在清理历史 Release ..."
           gh release list --json tagName -q '.[].tagName' 2>/dev/null | while read tag; do
             [ -z "$tag" ] && continue
             echo "  删除: $tag"
             gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
           done
-          echo "✅ 清理完成"
+          echo "清理完成"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 发布 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.timestamp.outputs.tag }}
-          name: "${{ steps.timestamp.outputs.datetime }} 更新"
-          files: |
-            output/adguard_home_rules.txt
-          body: |
-            ## 自动编译产物
+        run: |
+          gh release create "${{ steps.timestamp.outputs.tag }}" \
+            output/adguard_home_rules.txt \
+            --title "${{ steps.timestamp.outputs.datetime }} 更新" \
+            --notes "$(cat <<'BODY'
+          ## 自动编译产物
 
-            - **更新时间**：${{ steps.timestamp.outputs.datetime }}（北京时间）
-            - **规则文件**：`adguard_home_rules.txt`（可直接导入 AdGuard Home）
+          - **更新时间**：${{ steps.timestamp.outputs.datetime }}（北京时间）
+          - **规则文件**：`adguard_home_rules.txt`（可直接导入 AdGuard Home）
 
-            ### 使用方式
+          ### 使用方式
 
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/latest/download/adguard_home_rules.txt
-            ```
-          draft: false
-          prerelease: false
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/latest/download/adguard_home_rules.txt
+          ```
+          BODY
+          )"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
