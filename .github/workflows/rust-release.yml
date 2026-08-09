@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  编译发布:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
