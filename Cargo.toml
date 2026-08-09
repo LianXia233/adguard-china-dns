@@ -1,0 +1,15 @@
+[package]
+name = "adguard-china-dns"
+version = "1.0.0"
+edition = "2021"
+description = "AdGuard Home DNS分流规则编译工具 (Rust版)"
+license = "GPL-3.0"
+repository = "https://github.com/LianXia233/adguard-china-dns"
+
+[[bin]]
+name = "adguard-china-dns"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
+regex = "1"
