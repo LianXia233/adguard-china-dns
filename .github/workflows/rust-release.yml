@@ -1,8 +1,8 @@
-name: Rust Release
+name: Rust 自动编译发布
 
 on:
   schedule:
-    - cron: '0 23 * * *'       # UTC 23:00 = 北京时间 07:00
+    - cron: '0 23 * * *'
   push:
     paths:
       - 'src/**'
@@ -15,40 +15,90 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  编译发布:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build (release)
+      - name: 编译发布版本
         run: cargo build --release
 
-      - name: Strip binary
+      - name: 裁剪二进制体积
         run: strip target/release/adguard-china-dns
 
-      - name: Generate rules
+      - name: 生成规则文件
         run: |
           mkdir -p output
           OUTPUT_FILE="output/adguard_home_rules.txt" ./target/release/adguard-china-dns
 
-      - name: Upload binary to Release
+      - name: 清理历史 Release
+        run: |
+          echo "🧹 正在清理历史 Release ..."
+          RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases")
+          echo "$RELEASES" | python3 -c "
+          import sys, json
+          releases = json.load(sys.stdin)
+          if not isinstance(releases, list):
+              print('无历史 Release 需清理')
+              sys.exit(0)
+          for r in releases:
+              print(f'  删除: {r[\"tag_name\"]}')
+          " 
+          echo "$RELEASES" | python3 -c "
+          import sys, json, subprocess
+          releases = json.load(sys.stdin)
+          if not isinstance(releases, list):
+              sys.exit(0)
+          for r in releases:
+              # 删除 release
+              subprocess.run(['curl', '-s', '-X', 'DELETE',
+                  '-H', 'Authorization: token \${{ secrets.GITHUB_TOKEN }}',
+                  r['url'].replace('https://api.github.com', 'https://api.github.com')], check=False)
+              # 删除 tag
+              subprocess.run(['curl', '-s', '-X', 'DELETE',
+                  '-H', 'Authorization: token \${{ secrets.GITHUB_TOKEN }}',
+                  f'https://api.github.com/repos/\${{ github.repository }}/git/refs/tags/{r[\"tag_name\"]}'], check=False)
+          " || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 生成发布时间戳
+        id: timestamp
+        run: |
+          TS=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')
+          echo "datetime=${TS}" >> $GITHUB_OUTPUT
+
+      - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: rust-v${{ github.run_number }}
-          name: "Rust Release #${{ github.run_number }}"
+          tag_name: v-${{ steps.timestamp.outputs.datetime }}
+          name: "${{ steps.timestamp.outputs.datetime }} 更新"
           files: |
             target/release/adguard-china-dns
             output/adguard_home_rules.txt
           body: |
-            ## Rust 版自动编译
+            ## 自动编译产物
 
-            - 编译目标: `x86_64-unknown-linux-gnu`
-            - 二进制: `adguard-china-dns` (静态链接)
-            - 规则文件: `adguard_home_rules.txt` (可直接导入 AdGuard Home)
+            - **更新时间**：${{ steps.timestamp.outputs.datetime }}（北京时间）
+            - **编译目标**：`x86_64-unknown-linux-gnu`
+            - **二进制文件**：`adguard-china-dns`（静态链接，无运行时依赖）
+            - **规则文件**：`adguard_home_rules.txt`（可直接导入 AdGuard Home）
+
+            ### 使用方式
+
+            ```bash
+            # 下载二进制
+            wget https://github.com/${{ github.repository }}/releases/download/v-${{ steps.timestamp.outputs.datetime }}/adguard-china-dns
+            chmod +x adguard-china-dns
+
+            # 下载规则文件
+            wget https://github.com/${{ github.repository }}/releases/download/v-${{ steps.timestamp.outputs.datetime }}/adguard_home_rules.txt
+            ```
           draft: false
           prerelease: false
         env:
