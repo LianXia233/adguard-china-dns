@@ -2,7 +2,7 @@ name: Rust 自动编译发布
 
 on:
   schedule:
-    - cron: '0 23 * * *'
+    - cron: '23 23 * * *'
   push:
     paths:
       - 'src/**'
