@@ -127,14 +127,14 @@ wget https://github.com/LianXia233/adguard-china-dns/releases/latest/download/ad
 仓库自带 `rust-release.yml`，无需自建 Cron：
 
 - **触发时机**
-  - 每日 **UTC 23:00**（北京时间 **07:00**）定时触发
+  - 每日 **UTC 23:23**（北京时间 **07:23**）定时触发
   - 推送改动到 `src/**`、`Cargo.toml`、`config/**` 时触发
   - 支持 Actions 页面手动触发（`workflow_dispatch`）
 - **运行流程**
   1. 编译静态二进制
   2. 运行生成最新规则文件
   3. 清理所有历史 Release
-  4. 创建新 Release（标题格式 `2026-08-09 07:00 更新`），仅附带规则文件
+  4. 创建新 Release（标题格式 `2026-08-09 07:23 更新`），仅附带规则文件
 
 > 本地 Cron 与 GitHub Actions 二选一，避免对同一份输出文件重复写入。
 
