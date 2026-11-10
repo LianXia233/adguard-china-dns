@@ -354,11 +354,14 @@ home.lan
   - 🔄 **代码推送**：`src/**`、`Cargo.toml`、`config/**` 或流水线定义变更推送至 `main` 分支
   - 🖐️ **手动触发**：支持在 GitHub 仓库 Actions 控制台手动触发（`workflow_dispatch`）
 - **执行流程**：
-  1. 质量门禁：`cargo fmt --check` + `cargo clippy -D warnings` + `cargo test`
+  1. 质量门禁：`cargo fmt --check` + `cargo clippy -- -D warnings` + `cargo test`
   2. 构建 Release 二进制（提交 `Cargo.lock` 并以 `--locked` 构建保证可复现，启用 rust-cache 依赖缓存加速）
   3. 运行编译器（**显式读取仓库 `config/` 配置**）生成全量规则文件 `adguard_home_rules.txt`
-  4. **先创建新 Release、再清理旧版**（始终保留上一版，确保 `releases/latest/download` 下载链接全程可用），并启用 `concurrency` 并发组，避免定时与推送触发互相踩踏
-  5. Release 标题带时间戳（格式如 `YYYY-MM-DD HH:MM 更新`），仅附带规则文件资产
+  4. **产物门禁**（发布前必须全绿，否则直接终止、不覆盖 `releases/latest`）：
+     - 语法校验 `tools/validate_upstream_dns_file.py`：逐行按 AdGuard Home（dnsproxy）的 `[/d1/d2/]upstreams` 规格复核。这一步是硬需求 —— `upstream_dns_file` 里只要有一行不合法，AdGuard Home 就会 `[fatal]` 并且**完全不启动 DNS 服务**，而 `--check-config` 并不解析该文件，拦不住这类错误；
+     - 规模校验：域名条目数 < 50,000 视为在线源格式漂移或下载不完整（例如 CDN 返回未解码的 gzip 字节），终止发布。
+  5. **先创建新 Release、再清理旧版**（只保留最新一份产物，保证 `releases/latest/download` 链接全程可用），并启用 `concurrency` 并发组，避免定时与推送触发互相踩踏
+  6. Release 标题带时间戳（格式如 `YYYY-MM-DD HH:MM 更新`），仅附带规则文件资产
 
 ---
 

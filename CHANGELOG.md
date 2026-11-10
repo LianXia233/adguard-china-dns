@@ -19,7 +19,8 @@
 
 ### CI
 - 发布前新增产物语法门禁 `tools/validate_upstream_dns_file.py` 与域名规模门禁（< 50,000 终止发布）
-- Release 清理由"只留最新 1 个"改为"保留最近 5 个"，与文档承诺一致，出问题时可立即回退上一版
+- Release 清理保持"每次编译只保留最新一份"，并补上空 tag 保护；回退安全改由前置的语法/规模门禁保证（门禁不过就不发布，不会出现"最新即砖"）
+- 修正 v1.1.0 的文档错误承诺：此前 CHANGELOG 与 README 写作"始终保留上一版"，工作流实际一直是删除除最新外的全部 Release，现统一为"只保留最新"
 
 ## v1.1.0 (2026-11-11)
 
@@ -40,7 +41,7 @@
 - 新增 13 个单元测试覆盖域名清洗边界与规则渲染
 
 ### CI
-- Release 改为「先建后删」并始终保留上一版，消除 `releases/latest/download` 的 404 窗口
+- Release 改为「先建后删」，消除 `releases/latest/download` 的 404 窗口；历史产物只保留最新一份（v1.1.1 修正此处原写作"始终保留上一版"的错误描述）
 - 新增 `concurrency` 并发组，避免定时与推送触发并发删建 Release
 - 新增质量门禁（`cargo fmt --check` / `cargo clippy -D warnings` / `cargo test`）、rust-cache 依赖缓存、`--locked` 可复现构建
 - 提交 `Cargo.lock`，`.gitignore` 补充 `target/` 与 `output/`

@@ -105,18 +105,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 清理历史 Release（保留最近 5 个）
+      - name: 清理历史 Release（只保留最新）
         run: |
-          # 只保留最近 KEEP 个：一旦新产物语法有问题，用户可立即回退到上一版而不是无版可退
-          KEEP=5
-          echo "保留最近 ${KEEP} 个 Release..."
-          gh release list --json tagName -q '.[].tagName' \
-            | grep -E '^v-[0-9]{8}-[0-9]{4}$' | sort -r \
-            | tail -n +$((KEEP + 1)) | while read -r tag; do
-              [ -z "$tag" ] && continue
-              echo "  删除: $tag"
-              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-            done
+          # 每次编译都清掉陈旧产物，Release 列表里始终只有最新一份规则文件。
+          # 安全性由前置门禁保证：语法校验 + 规模校验不通过就不会发布，也就不会出现"最新即砖"。
+          NEW="${{ steps.timestamp.outputs.tag }}"
+          if [ -z "$NEW" ]; then
+            echo "新 Release tag 为空，跳过清理"
+            exit 0
+          fi
+          echo "正在清理（仅保留 ${NEW}）..."
+          gh release list --limit 100 --json tagName -q '.[].tagName' | while read -r tag; do
+            [ -z "$tag" ] && continue
+            [ "$tag" = "$NEW" ] && continue
+            echo "  删除: $tag"
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          done
           echo "清理完成"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
