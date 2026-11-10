@@ -285,8 +285,8 @@ fn compile_rules(
     let online_raw = process_file(rules_content, args.exact_policy, &mut stats);
 
     // 守卫：源格式漂移 / 下载不完整
-    if stats.effective_records > 0 {
-        let drop_pct = stats.dropped * 100 / stats.effective_records;
+    // 用 checked_div 表达「除数为 0 时跳过」，同时兼容新版 clippy 的 manual_checked_ops。
+    if let Some(drop_pct) = (stats.dropped * 100).checked_div(stats.effective_records) {
         if drop_pct > MAX_DROP_PERCENT {
             warn(&format!(
                 "在线源丢弃率偏高：{} / {} 行（{}%）未通过清洗，请确认规则源格式是否变更。",
