@@ -1,5 +1,73 @@
 # Changelog
 
+## v1.2.0 (2026-11-11) — 全面审计与修复
+
+本次依据 AdGuard Home v0.107.80 官方文档与 dnsproxy v0.86.0 / golibs v0.35.16 源码、
+Surge 官方 DOMAIN-SET 手册、各 DNS 服务商官方资料，以及真实二进制加载与连通性实测完成审计。
+
+### 规则语义（核心修复）
+- **🔴 精确匹配规则被静默扩大为后缀匹配**：Surge DOMAIN-SET 中不附带点的行是**精确匹配**（官方手册：
+  "A plain line matches the hostname exactly"），带前导点才是后缀匹配。全量 110,188 行中 **559 条为精确匹配**，
+  旧实现统一转成 `[/domain/]`（后缀匹配）且无任何提示。现按官方语义分类，默认 `expand` 会强制输出数量、
+  代表性样本与产物头部注释；可用 `--exact-match-policy skip` 跳过（同样统计）。明确说明 AGH 上游文件
+  **没有精确匹配语法**，且不能用 `#` 排除子域来模拟（会覆盖父域分流规则）。
+- **新增 IDN → Punycode**：手写 RFC 3492 Bootstring，包含 Unicode 大小写折叠（`BÜCHER` → `xn--bcher-kva`），
+  零第三方依赖；对齐 golibs `idna.ToASCII` 行为。
+- **稳定可复现输出**：域名改用 `BTreeSet` 字典序排序后分组，产物不再受 `HashSet` 随机迭代顺序影响；
+  新增集成测试验证两次编译规则部分逐字节一致。
+- **父子域去重**：被父域名规则覆盖的子域名被安全去掉（同组上游，分流语义不变），实测去掉 165 条。
+- **完整统计**：原始行 / 有效记录 / 解析 / 转换 / 唯一域名 / 重复 / 无效 / 不支持 / 丢弃 / 父子域去重 /
+  Punycode 数量全部写入 stdout、产物头部注释与 `--report-json`；不支持规则按类型分类并保留样本，
+  禁止静默丢弃。
+- **规则类型识别**：支持 `DOMAIN,` / `DOMAIN-SUFFIX,` / `DOMAIN-KEYWORD,` / `domain:` / `domain-suffix:` /
+  `*.` 仅子域 / 通配符 / IP-CIDR 等分类，前缀后带空格不再整行丢失。
+
+### DNS 上游配置
+- **国内**：移除 `https://doh.volcengine.com/dns-query` 与 `tls://dot.volcengine.com`——火山引擎官方 FAQ 明确
+  「公共解析 PublicDNS 尚未支持 DoH/DoT/DoQ」，实测后者域名解析失败；改用官方明文 `180.184.1.1`。
+  移除与 `doh.pub` 同服务的国密 `sm2.doh.pub`；新增 360 官方 DoH 与明文 UDP 兜底 `223.5.5.5`。
+- **全球**：移除 `quic://dns.adguard-dns.com`（**AdGuard DNS 默认过滤版**，会拦截广告/跟踪器/钓鱼，
+  与「普通解析」目标冲突；无过滤应为 `unfiltered.adguard-dns.com`）；移除
+  `https://208.67.222.222/dns-query`、`https://101.101.101.101/dns-query`（IP 直连 DoH、端点/证书不匹配，
+  实测 443 不可达）、`tls://1.0.0.1`（与 1.1.1.1 同故障域且实测超时）。
+  默认只保留实测可用的 `tls://1.1.1.1`，其余官方端点以注释示例给出。
+- **🔴 修复 Google DoH 导致海外域名解析失败**：真实 AGH 实测中启用 `https://dns.google/dns-query` 时
+  `github.com` 等查询 10s 超时（日志明确指向该上游）；改为默认注释后，国内/海外域名 A+AAAA 全部成功。
+- **不再对整个 URL 转小写**：只规范化 scheme 与主机名，保留 DoH 路径、query 与 `sdns://` DNS Stamp 的大小写。
+- 私有反向 DNS 明确应按 AGH 的 `local_ptr_upstreams` / Web 界面字段配置，不混入公共分流规则。
+
+### Rust 核心代码
+- 拆分为 `src/domain.rs`、`src/download.rs`、`src/upstream.rs`、`src/rules.rs` 四个模块，保持轻量（仅 reqwest）。
+- **下载完整性**：显式 `Accept-Encoding: identity`、状态码、Content-Type、gzip/zlib/zstd 魔数、UTF-8、
+  HTML 错误页、行数、域名行占比 ≥90% 逐层校验；连接超时与总超时分离；失败不写产物。
+- **错误处理**：配置文件缺失/读取中断/UTF-8 错误/非法上游/上游全失效一律 `die`，不再静默返回空配置；
+  输出改用原子 rename + `sync_all`，写入失败清理临时文件后退出。
+- **发布前全文件自检**：`validate_all_lines()` 覆盖裸默认上游行与所有规则行，并要求至少一条默认上游
+  （否则 AGH 报 `no default upstreams`）。
+- 新增 CLI：`--rules-file`（离线复现）、`--exact-match-policy`、`--min-domains`、`--report-json`。
+
+### 测试体系与 CI
+- `tools/validate_upstream_dns_file.py` 重写为 dnsproxy `splitConfigLine` 的精确复刻，并新增重复域名、
+  大写域名、父子域重叠检测；新增 24 项单元测试 `tools/test_validate_upstream_dns_file.py`。
+- 新增 `tools/agh_compat/`（Go，调用**官方 dnsproxy v0.86.0** 的 `ParseUpstreamsConfig`）与
+  `tools/agh_runtime_check.py`（启动**真实 AdGuard Home v0.107.80** 并做 A/AAAA 查询）。
+- 新增 `tools/test_upstreams.py` + `tools/endpoints.txt`：记录测试时间、出口网络、协议、A/AAAA、
+  RTT、超时、TLS 证书验证；DoQ 明确标记为「QUIC 握手未验证」。
+- CI `paths` 补上 `tools/**`、`README.md`、`CHANGELOG.md`、`.github/workflows/**`；新增验证器单测、
+  上游配置检查、官方 dnsproxy 解析、真实 AGH 加载四道发布门禁，任一失败即终止发布。
+
+### 文档
+- README 全面同步：分流原理、`upstream_dns_file` 语法与覆盖关系、默认上游、Bootstrap、私有反向 DNS、
+  域名转换语义、不支持规则类型、配置示例、错误排查、三层验证方法。
+- 修正 `fastest_addr` 的错误描述（是对**应答 IP** 测速，不是给上游打分）；修正版本要求为已实测的
+  v0.107.80；补上 `--check-config` 不解析 upstream_dns_file 的实证结论。
+
+### 实测结论（2026-11-11，中国大陆 / 北京腾讯云出口）
+- 产物：110,188 行源 → 109,977 个唯一域名 → 2,207 条规则行 → 约 1.67 MB。
+- 静态校验、官方 dnsproxy 解析、真实 AGH v0.107.80 加载与 A/AAAA 查询**全部通过**；
+  `github.com` 未命中专属上游，走默认上游。
+- 对照实验：`AdGuardHome --check-config` 对含错误语法的规则文件仍返回 0，证实它不能作为产物门禁。
+
 ## v1.1.1 (2026-11-11)
 
 ### Fixed

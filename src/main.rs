@@ -1,67 +1,73 @@
-use std::collections::HashSet;
+mod domain;
+mod download;
+mod rules;
+mod upstream;
+
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::time::Duration;
 
+use domain::{dedup_sort, process_file, DomainStats, ExactPolicy};
+use download::{build_client, download_rules};
 use reqwest::blocking::Client;
+use rules::{build_rule_lines, validate_all_lines, DOMAINS_PER_GROUP};
+use upstream::load_upstream_file;
 
 // =============================================================================
-// Constants
+// 默认配置模板（与仓库 config/ 目录保持同步）
 // =============================================================================
-
-/// 在线规则源（依次容灾回退：GitHub 原源 ➔ jsDelivr 双 CDN 节点）
-const DOWNLOAD_URLS: &[&str] = &[
-    "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt",
-    "https://cdn.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt",
-    "https://fastly.jsdelivr.net/gh/Loyalsoldier/surge-rules@release/direct.txt",
-];
-
-/// 下载超时（秒）。direct.txt 约 3.4MB，为弱网环境适当放宽
-const DOWNLOAD_TIMEOUT_SECS: u64 = 30;
-
-/// 下载内容最低行数校验阈值，低于此值视为源数据损坏，拒绝覆写
-const MIN_DOWNLOAD_LINES: usize = 1000;
-
-/// 单条分流规则中合组的域名数量。
-/// AdGuard Home 支持 dnsmasq 风格的 [/d1/d2/.../]<upstream> 多域名合组语法，
-/// 合组可避免每条规则重复携带整串上游列表，产物体积缩减约 85%。
-const DOMAINS_PER_GROUP: usize = 50;
-
-/// 在线源清洗后的最低域名数量。低于此值判定为源格式漂移或数据损坏，
-/// 直接失败退出，避免把近乎空白的规则发布出去（现网稳定在 11 万左右）。
-const MIN_KEPT_DOMAINS: usize = 50_000;
-
-/// 在线源丢弃率告警阈值（百分比）。超过则说明源格式可能已变更。
-const MAX_DROP_PERCENT: usize = 5;
 
 const DEFAULT_DNS_GLOBAL: &str = "\
-# 全局兜底安全 DNS（未命中分流规则时使用，支持 DoH / DoT / DoQ）
-# 注：DNS64 仅适用于 IPv6-only / NAT64 网络，常规网络请勿启用（会返回不可路由的合成 AAAA）
-# https://dns64.dns.google/dns-query
-https://208.67.222.222/dns-query
-https://101.101.101.101/dns-query
-tls://1.0.0.1
+# 全球/海外默认上游（未命中分流规则时使用）
+# upstream_dns_file 非空时，本文件整体替代 dns.upstream_dns；
+# 裸上游行即默认上游，缺失会让 AdGuard Home 报 no default upstreams 并启动失败。
+
+# Cloudflare 1.1.1.1 官方 DoT：IP 直连免 Bootstrap，TLS 证书含 1.1.1.1 SAN
+# 实测（中国大陆/北京腾讯云出口）：可用，A/AAAA 正常返回
 tls://1.1.1.1
-quic://dns.adguard-dns.com
-https://dns.google/dns-query
+
+# 以下为官方端点示例，请按你所在网络的实测结果决定是否启用。
+# 中国大陆网络常封锁海外 443/853；load_balance 下混入不可达上游会让部分查询
+# 等到超时才切换，实测 Google DoH 在本环境 10s 超时导致 github.com 解析失败。
+# https://dns.google/dns-query                 # Google Public DNS 官方 DoH（需 Bootstrap）
+# https://unfiltered.adguard-dns.com/dns-query  # AdGuard DNS 无过滤（dns.adguard-dns.com 是过滤版）
+# https://doh.opendns.com/dns-query             # Cisco OpenDNS 官方 DoH
+# https://cloudflare-dns.com/dns-query          # Cloudflare 官方 DoH（与 tls://1.1.1.1 同服务）
+# 9.9.9.9                                      # Quad9 明文 UDP（跨境明文可能被劫持）
+# https://unfiltered.adguard-dns.com/dns-query   # AdGuard DNS 无过滤（dns.adguard-dns.com 是过滤版）
+# https://doh.opendns.com/dns-query              # Cisco OpenDNS 官方 DoH
+# https://cloudflare-dns.com/dns-query           # Cloudflare 官方 DoH（与 tls://1.1.1.1 同服务）
+# 9.9.9.9                                       # Quad9 明文 UDP（跨境明文可能被劫持）
 ";
 
 const DEFAULT_DNS_UPSTREAM: &str = "\
 # 国内高速上游 DNS（命中分流规则时使用）
+# 全部为服务商官方公开端点；同一服务商的多协议入口不算独立故障域。
+# 火山引擎公共解析 PublicDNS 官方明确仅提供 UDP/TCP 明文，未提供 DoH/DoT/DoQ。
+
+# 阿里云公共 DNS（官方 DoH）
 https://dns.alidns.com/dns-query
+
+# DNSPod 公共 DNS（官方 DoH / DoT；同一服务，仅作协议级冗余）
 https://doh.pub/dns-query
 tls://dot.pub
-https://doh.volcengine.com/dns-query
-tls://dot.volcengine.com
-# 国密 SM2 端点（标准 TLS 客户端亦可正常握手）
-https://sm2.doh.pub/dns-query
+
+# 360 安全 DNS（官方 DoH）
+https://doh.360.cn/dns-query
+
+# 火山引擎公共解析 PublicDNS（官方明文 UDP）
+180.184.1.1
+
+# 明文 UDP 兜底：免 Bootstrap，CDN 调度贴近运营商出口
+223.5.5.5
 ";
 
 const DEFAULT_DOMAIN_CUSTOM: &str = "\
-# 个人直连域名
+# 个人直连域名（每行一个；语义说明见 README）
+# 不带点 = 精确匹配，带前导点 = 后缀匹配（含域名本身及全部子域）
 xoyo.com
 calatopia.com
 kurogames.com
@@ -70,11 +76,14 @@ wegame.com.cn
 ugreengroup.com
 wanmei.com
 
-# 在此按需添加你的直连域名（路由器面板、NAS、内网服务等，写法示例见 README），每行一个
+# 在此按需添加你的直连域名，每行一个
 ";
 
+const MIN_KEPT_DOMAINS: usize = 50_000;
+const MAX_DROP_PERCENT: usize = 5;
+
 // =============================================================================
-// CLI Arguments
+// CLI
 // =============================================================================
 
 const HELP_TEXT: &str = "\
@@ -83,60 +92,95 @@ const HELP_TEXT: &str = "\
 将中国直连域名清单与国内上游 DNS 编译为 AdGuard Home upstream_dns_file 分流规则。
 
 选项:
-  -o, --output <路径>       指定输出规则文件路径
-                            (默认: 系统临时目录下 adguard_home_rules.txt，
-                             或环境变量 OUTPUT_FILE)
-  -c, --config-dir <目录>   指定配置文件目录
-                            (默认: 可执行文件同级 config/，或环境变量 CONFIG_DIR)
-  -V, --version             显示版本号
-  -h, --help                显示本帮助信息
+  -o, --output <路径>              输出规则文件路径
+                                   (默认: OUTPUT_FILE 环境变量，或临时目录/adguard_home_rules.txt)
+  -c, --config-dir <目录>         配置文件目录
+                                   (默认: CONFIG_DIR 环境变量，或可执行文件同级 config/)
+      --rules-file <路径>         使用本地规则文件代替在线下载（用于离线复现/测试）
+      --exact-match-policy <策略>  精确匹配规则处理策略: expand(默认) | skip
+                                   expand = 扩大为后缀匹配并强制告警；skip = 跳过并统计
+      --min-domains <数量>        在线源清洗后最低域名数守卫（默认 50000）
+      --report-json <路径>        额外输出结构化统计 JSON
+  -V, --version                   显示版本号
+  -h, --help                      显示本帮助信息
 ";
 
 struct Args {
     output: PathBuf,
     config_dir: PathBuf,
+    rules_file: Option<PathBuf>,
+    exact_policy: ExactPolicy,
+    min_domains: usize,
+    report_json: Option<PathBuf>,
 }
 
 fn parse_args() -> Args {
     let mut output: Option<PathBuf> = None;
     let mut config_dir: Option<PathBuf> = None;
+    let mut rules_file: Option<PathBuf> = None;
+    let mut exact_policy = ExactPolicy::Expand;
+    let mut min_domains = MIN_KEPT_DOMAINS;
+    let mut report_json: Option<PathBuf> = None;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "-h" | "--help" => {
-                println!("{}", HELP_TEXT);
+                println!("{HELP_TEXT}");
                 process::exit(0);
             }
             "-V" | "--version" => {
                 println!("adguard-china-dns v{}", env!("CARGO_PKG_VERSION"));
                 process::exit(0);
             }
-            "-o" | "--output" => {
-                output = Some(PathBuf::from(next_value(&mut iter, "--output")));
-            }
+            "-o" | "--output" => output = Some(PathBuf::from(next_value(&mut iter, "--output"))),
             "-c" | "--config-dir" => {
-                config_dir = Some(PathBuf::from(next_value(&mut iter, "--config-dir")));
+                config_dir = Some(PathBuf::from(next_value(&mut iter, "--config-dir")))
             }
-            other => die(&format!("未知参数: {}\n使用 --help 查看用法。", other)),
+            "--rules-file" => {
+                rules_file = Some(PathBuf::from(next_value(&mut iter, "--rules-file")))
+            }
+            "--exact-match-policy" => {
+                let v = next_value(&mut iter, "--exact-match-policy");
+                exact_policy = ExactPolicy::parse(&v).unwrap_or_else(|| {
+                    die(&format!(
+                        "无效的 --exact-match-policy: {v}（可选 expand|skip）"
+                    ))
+                });
+            }
+            "--min-domains" => {
+                let v = next_value(&mut iter, "--min-domains");
+                min_domains = v
+                    .parse()
+                    .unwrap_or_else(|_| die(&format!("无效的 --min-domains: {v}")));
+            }
+            "--report-json" => {
+                report_json = Some(PathBuf::from(next_value(&mut iter, "--report-json")))
+            }
+            other => die(&format!("未知参数: {other}\n使用 --help 查看用法。")),
         }
     }
 
-    // 优先级：CLI 参数 > 环境变量 > 默认值
     let output = output
         .or_else(|| env::var("OUTPUT_FILE").ok().map(PathBuf::from))
         .unwrap_or_else(|| env::temp_dir().join("adguard_home_rules.txt"));
-
     let config_dir = config_dir
         .or_else(|| env::var("CONFIG_DIR").ok().map(PathBuf::from))
         .unwrap_or_else(default_config_dir);
 
-    Args { output, config_dir }
+    Args {
+        output,
+        config_dir,
+        rules_file,
+        exact_policy,
+        min_domains,
+        report_json,
+    }
 }
 
 fn next_value<I: Iterator<Item = String>>(iter: &mut I, flag: &str) -> String {
     iter.next()
-        .unwrap_or_else(|| die(&format!("参数 {} 缺少对应的值。", flag)))
+        .unwrap_or_else(|| die(&format!("参数 {flag} 缺少对应的值。")))
 }
 
 fn default_config_dir() -> PathBuf {
@@ -152,105 +196,59 @@ fn default_config_dir() -> PathBuf {
 // =============================================================================
 
 fn log(msg: &str) {
-    println!("{}", msg);
+    println!("{msg}");
 }
-
 fn warn(msg: &str) {
-    eprintln!("\u{26a0}\u{fe0f}  {}", msg);
+    eprintln!("\u{26a0}\u{fe0f}  {msg}");
 }
-
 fn die(msg: &str) -> ! {
-    eprintln!("\u{274c} {}", msg);
+    eprintln!("\u{274c} {msg}");
     process::exit(1);
 }
 
 // =============================================================================
-// Step 1: init_config
+// 配置初始化
 // =============================================================================
 
 fn ensure_config_file(path: &Path, label: &str, default_content: &str) {
     if path.exists() {
-        log(&format!("   ✅ 检测到已有 [{}] 配置，直接读取。", label));
+        log(&format!("   ✅ 检测到已有 [{label}] 配置，直接读取。"));
     } else {
         log(&format!(
-            "   🆕 未检测到 [{}] 配置，正在生成默认模板...",
-            label
+            "   🆕 未检测到 [{label}] 配置，正在生成默认模板..."
         ));
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap_or_else(|e| {
-                die(&format!("无法创建配置目录 {:?}: {}", parent, e));
-            });
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|e| die(&format!("无法创建配置目录 {parent:?}: {e}")));
         }
-        fs::write(path, default_content).unwrap_or_else(|e| {
-            die(&format!("无法写入配置文件 {:?}: {}", path, e));
-        });
+        fs::write(path, default_content)
+            .unwrap_or_else(|e| die(&format!("无法写入配置文件 {path:?}: {e}")));
     }
 }
 
 fn init_config(config_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
-    fs::create_dir_all(config_dir).unwrap_or_else(|e| {
-        die(&format!("无法创建配置目录 {:?}: {}", config_dir, e));
-    });
-
+    fs::create_dir_all(config_dir)
+        .unwrap_or_else(|e| die(&format!("无法创建配置目录 {config_dir:?}: {e}")));
     log("🔍 正在检查本地配置文件...");
-
     let f_global = config_dir.join("dns_global.txt");
     let f_upstream = config_dir.join("dns_upstream.txt");
     let f_custom = config_dir.join("domain_custom.txt");
-
     ensure_config_file(&f_global, "全局 DNS", DEFAULT_DNS_GLOBAL);
     ensure_config_file(&f_upstream, "上游 DNS", DEFAULT_DNS_UPSTREAM);
     ensure_config_file(&f_custom, "自定义域名", DEFAULT_DOMAIN_CUSTOM);
-
-    log("-------------------------------------");
     (f_global, f_upstream, f_custom)
 }
 
-// =============================================================================
-// Step 2: download_rules
-// =============================================================================
-
-fn download_rules(tmp_dir: &Path) -> PathBuf {
-    log("🔄 正在下载在线规则...");
-
-    let client = Client::builder()
-        .timeout(Duration::from_secs(DOWNLOAD_TIMEOUT_SECS))
-        .user_agent(format!(
-            "adguard-china-dns-rs/{}",
-            env!("CARGO_PKG_VERSION")
-        ))
-        .build()
-        .unwrap_or_else(|e| die(&format!("创建 HTTP 客户端失败: {}", e)));
-
-    let dl_path = tmp_dir.join("download.txt");
-
-    for url in DOWNLOAD_URLS {
-        log(&format!("🌐 尝试源: {}", url));
-
-        match client.get(*url).send() {
-            Ok(resp) if resp.status().is_success() => match resp.text() {
-                Ok(body) => {
-                    if body.lines().count() > MIN_DOWNLOAD_LINES {
-                        fs::write(&dl_path, &body).unwrap_or_else(|e| {
-                            die(&format!("写入下载文件失败: {}", e));
-                        });
-                        log("✅ 下载成功且校验通过！");
-                        return dl_path;
-                    }
-                    warn("下载完成但文件校验失败 (内容可能已损坏)，尝试备用源...");
-                }
-                Err(e) => warn(&format!("读取响应失败: {}，尝试备用源...", e)),
-            },
-            Ok(resp) => warn(&format!("源返回 HTTP {}，尝试备用源...", resp.status())),
-            Err(e) => warn(&format!("请求失败: {}，尝试备用源...", e)),
-        }
-    }
-
-    die("致命错误：所有规则源均下载/校验失败，请检查网络！");
+/// 严格读取 UTF-8 文本文件；失败直接终止，不静默返回空内容。
+fn read_text_file(path: &Path, label: &str) -> String {
+    let bytes =
+        fs::read(path).unwrap_or_else(|e| die(&format!("读取 [{label}] 文件 {path:?} 失败: {e}")));
+    String::from_utf8(bytes)
+        .unwrap_or_else(|e| die(&format!("[{label}] 文件 {path:?} 不是合法 UTF-8: {e}")))
 }
 
 // =============================================================================
-// Step 3: compile_rules
+// 编译
 // =============================================================================
 
 struct CompileResult {
@@ -259,357 +257,123 @@ struct CompileResult {
     online_lines: Vec<String>,
     custom_count: usize,
     online_count: usize,
-}
-
-/// 读取上游 DNS 清单：去重 + 转小写，拼接为空格分隔字符串
-fn load_upstreams(path: &Path) -> String {
-    let mut seen = HashSet::new();
-    let mut parts: Vec<String> = Vec::new();
-    if let Ok(file) = fs::File::open(path) {
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let lower = line.to_lowercase();
-            if seen.insert(lower.clone()) {
-                parts.push(lower);
-            }
-        }
-    }
-    parts.join(" ")
-}
-
-/// 读取全局兜底 DNS 清单：跳过空行与注释，转小写
-fn load_global(path: &Path) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
-    if let Ok(file) = fs::File::open(path) {
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            lines.push(line.to_lowercase());
-        }
-    }
-    lines
-}
-
-/// 逐行读取文件并清洗为域名，交由回调处理（去重由调用方负责）。
-/// 返回 (有效原始行数, 清洗通过数)，用于统计丢弃率——丢弃必须由人看见，
-/// 否则上游源格式漂移时会静默生成近乎空白的规则文件。
-fn for_each_clean_domain<F: FnMut(String)>(path: &Path, mut on_domain: F) -> (usize, usize) {
-    let Ok(file) = fs::File::open(path) else {
-        return (0, 0);
-    };
-    let mut total = 0usize;
-    let mut kept = 0usize;
-    for line in BufReader::new(file).lines().map_while(Result::ok) {
-        let raw = line.trim();
-        if raw.is_empty() || raw.starts_with('#') {
-            continue;
-        }
-        total += 1;
-        if let Some(domain) = clean_domain_line(&line) {
-            kept += 1;
-            on_domain(domain);
-        }
-    }
-    (total, kept)
+    stats: DomainStats,
+    custom_stats: DomainStats,
+    upstream_count: usize,
 }
 
 fn compile_rules(
     f_global: &Path,
     f_upstream: &Path,
     f_custom: &Path,
-    dl_path: &Path,
+    rules_content: &str,
+    args: &Args,
 ) -> CompileResult {
-    // 3.1 上游 DNS 与全局 DNS
-    let upstreams = load_upstreams(f_upstream);
-    if upstreams.is_empty() {
-        warn(&format!(
-            "未配置任何上游 DNS（{}）：自定义域名与在线域名将以注释形式保留，回退由全局 DNS 解析。",
-            f_upstream.display()
-        ));
-    }
-    let global_lines = load_global(f_global);
+    // 上游清单：严格校验、去重、保留路径大小写
+    let upstreams = load_upstream_file(f_upstream, "国内上游 DNS", die);
+    let global_lines = load_upstream_file(f_global, "全局 DNS", die);
+    let upstream_str = upstreams.join(" ");
+    let upstream_count = upstreams.len();
 
-    // 3.2 域名清洗 + 内存去重（自定义优先，在线规则跳过已存在的域名）
-    let mut seen: HashSet<String> = HashSet::new();
+    // 自定义域名
+    let custom_content = read_text_file(f_custom, "自定义域名");
+    let mut custom_stats = DomainStats::default();
+    let custom_raw = process_file(&custom_content, args.exact_policy, &mut custom_stats);
 
-    let mut custom_domains: Vec<String> = Vec::new();
-    let (_custom_total, _custom_kept) = for_each_clean_domain(f_custom, |d| {
-        if seen.insert(d.clone()) {
-            custom_domains.push(d);
-        }
-    });
+    // 在线域名
+    let mut stats = DomainStats::default();
+    let online_raw = process_file(rules_content, args.exact_policy, &mut stats);
 
-    let mut online_domains: Vec<String> = Vec::new();
-    let (online_total, online_kept) = for_each_clean_domain(dl_path, |d| {
-        if seen.insert(d.clone()) {
-            online_domains.push(d);
-        }
-    });
-
-    // 3.2.1 丢弃率与总量守卫：源格式一旦漂移（例如换成逗号规则格式），
-    // 清洗结果会塌陷到接近 0，而程序原本仍会报"编译成功"。
-    if online_total > 0 {
-        let dropped = online_total.saturating_sub(online_kept);
-        if dropped * 100 / online_total > MAX_DROP_PERCENT {
+    // 守卫：源格式漂移 / 下载不完整
+    if stats.effective_records > 0 {
+        let drop_pct = stats.dropped * 100 / stats.effective_records;
+        if drop_pct > MAX_DROP_PERCENT {
             warn(&format!(
                 "在线源丢弃率偏高：{} / {} 行（{}%）未通过清洗，请确认规则源格式是否变更。",
-                dropped,
-                online_total,
-                dropped * 100 / online_total
+                stats.dropped, stats.effective_records, drop_pct
             ));
         }
     }
-    if online_kept < MIN_KEPT_DOMAINS {
+    if stats.converted < args.min_domains {
         die(&format!(
             "在线源清洗后仅得到 {} 个域名（阈值 {}），判定为源损坏或格式漂移，拒绝生成规则。",
-            online_kept, MIN_KEPT_DOMAINS
+            stats.converted, args.min_domains
         ));
     }
 
-    let custom_count = custom_domains.len();
-    let online_count = online_domains.len();
+    // 稳定排序 + 去重（自定义优先，在线跳过已存在的域名）
+    let custom_set: BTreeSet<String> = custom_raw.into_iter().collect();
+    custom_stats.duplicates = custom_stats.converted.saturating_sub(custom_set.len());
+    let mut dummy = DomainStats::default();
+    let custom_domains = dedup_sort(
+        custom_set.iter().cloned().collect(),
+        &custom_set,
+        &mut dummy,
+        false,
+    );
+    // dedup_sort 会写 dummy 的计数，这里改用真实统计
+    custom_stats.unique_domains = custom_domains.len();
 
-    // 3.3 生成规则行：自定义域名数量少，逐行输出便于核对；
-    //     在线规则数量大，按组合块以大幅缩减产物体积
-    let custom_lines = build_rule_lines(&custom_domains, &upstreams, false);
-    let online_lines = build_rule_lines(&online_domains, &upstreams, true);
+    // 父子域去重的父域池 = 自定义域名 ∪ 在线域名（去掉 *. 前缀）
+    let online_set_all: BTreeSet<String> = online_raw.iter().cloned().collect();
+    stats.duplicates = stats.converted.saturating_sub(online_set_all.len());
+    let mut parent_pool: BTreeSet<String> = custom_set
+        .iter()
+        .map(|d| d.trim_start_matches("*.").to_string())
+        .collect();
+    for d in &online_set_all {
+        parent_pool.insert(d.trim_start_matches("*.").to_string());
+    }
+    // 在线域名跳过自定义已覆盖的域名
+    let online_only: Vec<String> = online_set_all
+        .iter()
+        .filter(|d| !custom_set.contains(*d))
+        .cloned()
+        .collect();
+    let online_domains = dedup_sort(online_only, &parent_pool, &mut stats, true);
+    stats.unique_domains = custom_domains.len() + online_domains.len();
+
+    let custom_lines = build_rule_lines(&custom_domains, &upstream_str, false);
+    let online_lines = build_rule_lines(&online_domains, &upstream_str, true);
 
     CompileResult {
         global_lines,
         custom_lines,
         online_lines,
-        custom_count,
-        online_count,
-    }
-}
-
-/// 清洗单行原始规则为规范化域名。
-/// 支持 Surge 风格前缀 domain: / domain-suffix:；domain-keyword: 在 AdGuard Home
-/// 上游规则中无对应语义（会错误地变成整词精确匹配），直接跳过并告警。
-/// Surge DOMAIN-SET 的 `.example.com` 与 `example.com` 统一转为 AdGuard Home 的
-/// `/example.com/`（匹配域名及其子域），对本项目的直连分流场景为刻意设计。
-fn clean_domain_line(raw: &str) -> Option<String> {
-    let line = raw.trim();
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
-
-    let lower = line.to_lowercase();
-    let mut d: &str = &lower;
-
-    if let Some(keyword) = d.strip_prefix("domain-keyword:") {
-        warn(&format!(
-            "跳过不支持的 domain-keyword 行: {}（AdGuard Home 无关键字语义）",
-            keyword
-        ));
-        return None;
-    }
-    for prefix in ["domain-suffix:", "domain:"] {
-        if let Some(rest) = d.strip_prefix(prefix) {
-            // 前缀后可能还有空格（如 "domain: example.com"），必须重新 trim，
-            // 否则整行会被下面的校验静默丢弃。
-            d = rest.trim();
-            break;
-        }
-    }
-
-    // 去除开头和结尾的点号（Surge DOMAIN-SET 的 `.example.com` 后缀标记）
-    let d = d.trim_matches('.');
-
-    if is_valid_domain(d) {
-        Some(d.to_string())
-    } else {
-        None
-    }
-}
-
-/// 校验规范化域名：小写字母/数字/连字符，标签非空且不以连字符开头结尾，
-/// 总长 ≤253、单标签 ≤63（RFC 1035），且末级标签不得全为数字。手写字符串校验，无正则引擎开销。
-///
-/// 末级标签全数字（如 `1.1.1.1`）在 AdGuard Home 侧会被
-/// `netutil.ValidateDomainName` 判为 "bad top-level domain name label"，
-/// 从而导致整个规则文件加载失败，因此这里必须提前拦掉。
-fn is_valid_domain(d: &str) -> bool {
-    !d.is_empty()
-        && d.len() <= 253
-        && d.split('.').all(|label| {
-            !label.is_empty()
-                && label.len() <= 63
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label
-                    .bytes()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-        })
-        && d.rsplit('.')
-            .next()
-            .is_some_and(|tld| !tld.bytes().all(|c| c.is_ascii_digit()))
-}
-
-/// 写出前自检：按 AdGuard Home（dnsproxy splitConfigLine）的语法重新解析每一条
-/// 生成的规则行。语法错误不会让单条规则失效，而是让整个 upstream_dns_file
-/// 加载失败、AdGuard Home 直接无法启动，因此必须在发布前拦住。
-fn validate_rule_lines(lines: &[String]) -> Result<(), String> {
-    for (i, line) in lines.iter().enumerate() {
-        // 空上游降级产生的注释行本就交给 AdGuard Home 忽略，无需校验
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("[/") else {
-            return Err(format!(
-                "第 {} 行未以 [/ 开头: {}",
-                i + 1,
-                line.chars().take(60).collect::<String>()
-            ));
-        };
-        let Some((domains, upstreams)) = rest.split_once("/]") else {
-            return Err(format!(
-                "第 {} 行缺少 /] 结尾: {}",
-                i + 1,
-                line.chars().take(60).collect::<String>()
-            ));
-        };
-        if upstreams.trim().is_empty() {
-            return Err(format!("第 {} 行没有上游地址", i + 1));
-        }
-        for (j, d) in domains.split('/').enumerate() {
-            if d.is_empty() {
-                // 空域名段在 AdGuard Home 中意为"仅无点裸主机名"，绝不能出现在产物里
-                return Err(format!("第 {} 行第 {} 个域名段为空", i + 1, j + 1));
-            }
-            if !is_valid_domain(d) {
-                return Err(format!("第 {} 行第 {} 个域名非法: {}", i + 1, j + 1, d));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// 将单个合组渲染为 AdGuard Home 上游规则行：[/d1/d2/.../]<upstreams>
-///
-/// 语法由 dnsproxy `splitConfigLine` 定义：整行必须以 `[/` 开头，域名段以 `/`
-/// 分隔并以 `/]` 收尾，其后紧跟空格分隔的上游列表。
-/// 注意结尾是 `/]` 而非 `]/`——写成 `]/` 会让 AdGuard Home 以
-/// "wrong upstream format" 直接启动失败（见 AdGuard Home 配置文档）。
-fn render_spec(group: &[String], upstreams: &str) -> String {
-    let mut line = String::with_capacity(4 + group.len() * 24 + upstreams.len());
-    line.push_str("[/");
-    for (i, d) in group.iter().enumerate() {
-        if i > 0 {
-            line.push('/');
-        }
-        line.push_str(d);
-    }
-    line.push_str("/]");
-    line.push_str(upstreams);
-    line
-}
-
-/// 将域名列表编译为 AdGuard Home 上游规则行。
-/// grouped=true 时按 DOMAINS_PER_GROUP 合组为 [/d1/d2/.../]upstream 形式；
-/// 否则每行一个域名（自定义规则数量少，逐行更便于核对）。
-/// 未配置上游时降级为注释行，规则完整保留且由全局 DNS 安全兜底。
-fn build_rule_lines(domains: &[String], upstreams: &str, grouped: bool) -> Vec<String> {
-    if upstreams.is_empty() {
-        return domains
-            .iter()
-            .map(|d| format!("# [未配置上游DNS] /{}/", d))
-            .collect();
-    }
-    if grouped {
-        domains
-            .chunks(DOMAINS_PER_GROUP)
-            .map(|group| render_spec(group, upstreams))
-            .collect()
-    } else {
-        domains
-            .iter()
-            .map(|d| format!("[/{d}/]{upstreams}"))
-            .collect()
+        custom_count: custom_domains.len(),
+        online_count: online_domains.len(),
+        stats,
+        custom_stats,
+        upstream_count,
     }
 }
 
 // =============================================================================
-// Step 4: write_output
+// 输出
 // =============================================================================
-
-fn write_output(result: &CompileResult, output_path: &Path) {
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).unwrap_or_else(|e| {
-                die(&format!("无法创建输出目录 {:?}: {}", parent, e));
-            });
-        }
-    }
-
-    // 先写输出文件同目录的临时文件，再原子 rename 覆盖，
-    // 避免进程中途被杀时留下截断的规则文件被 AdGuard Home 加载
-    let mut tmp_name = output_path.as_os_str().to_os_string();
-    tmp_name.push(".tmp");
-    let tmp_out = PathBuf::from(tmp_name);
-
-    let mut f = fs::File::create(&tmp_out).unwrap_or_else(|e| {
-        die(&format!("无法创建临时输出文件 {:?}: {}", tmp_out, e));
-    });
-
-    let now = chrono_now();
-
-    writeln!(f, "# ====================================================").unwrap();
-    writeln!(f, "# Auto Generated by AdGuard Rule Generator (Rust)").unwrap();
-    writeln!(f, "# Date : {} (UTC+8)", now).unwrap();
-    writeln!(f, "# ====================================================").unwrap();
-    writeln!(f).unwrap();
-
-    writeln!(f, "# === 全局基础 DNS ===").unwrap();
-    for line in &result.global_lines {
-        writeln!(f, "{}", line).unwrap();
-    }
-    writeln!(f).unwrap();
-
-    writeln!(f, "# === 你的自定义域名规则 ===").unwrap();
-    for line in &result.custom_lines {
-        writeln!(f, "{}", line).unwrap();
-    }
-    writeln!(f).unwrap();
-
-    writeln!(f, "# === 在线订阅的域名规则 ===").unwrap();
-    for line in &result.online_lines {
-        writeln!(f, "{}", line).unwrap();
-    }
-
-    fs::rename(&tmp_out, output_path).unwrap_or_else(|e| {
-        die(&format!("无法写入输出文件 {:?}: {}", output_path, e));
-    });
-}
 
 fn chrono_now() -> String {
-    // 便携版时间格式化，零依赖；输出固定为 UTC+8（北京时间）
     use std::time::SystemTime;
-    let dur = SystemTime::now()
+    let secs = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = dur.as_secs();
-
-    let total_secs = secs + 8 * 3600;
-    let days = total_secs / 86400;
-
-    // 从 1970-01-01 开始计算年月日
+        .unwrap_or_default()
+        .as_secs();
+    let total = secs + 8 * 3600;
+    let days = total / 86400;
     let (y, m, d) = civil_from_days(days as i64);
-    let remaining = total_secs % 86400;
-    let h = remaining / 3600;
-    let min = (remaining % 3600) / 60;
-    let s = remaining % 60;
-
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, h, min, s)
+    let rem = total % 86400;
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        y,
+        m,
+        d,
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60
+    )
 }
 
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    // Howard Hinnant 算法
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u32;
@@ -619,44 +383,219 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
+    (y + if m <= 2 { 1 } else { 0 }, m, d)
 }
 
-// =============================================================================
-// Step 5: print_report
-// =============================================================================
+fn stats_summary(stats: &DomainStats) -> String {
+    let mut kinds: Vec<_> = stats.by_kind.iter().collect();
+    kinds.sort_by_key(|(k, _)| **k);
+    let kind_str = kinds
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "原始行={} 有效记录={} 解析={} 转换={} 唯一域名={} 重复={} 无效={} 不支持={} 丢弃={} 父子域去重={} 二级及以下={} 多级子域={} Punycode={} | {}",
+        stats.raw_lines,
+        stats.effective_records,
+        stats.parsed,
+        stats.converted,
+        stats.unique_domains,
+        stats.duplicates,
+        stats.invalid,
+        stats.unsupported,
+        stats.dropped,
+        stats.parent_covered_removed,
+        stats.root_domains,
+        stats.sub_domains,
+        stats.punycode_converted,
+        kind_str
+    )
+}
 
-fn print_report(result: &CompileResult, output_path: &Path) {
-    let total = result.global_lines.len() + result.custom_count + result.online_count;
+fn build_output_lines(result: &CompileResult, args: &Args) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let now = chrono_now();
+    lines.push("# ====================================================".into());
+    lines.push("# Auto Generated by adguard-china-dns (Rust)".into());
+    lines.push(format!("# Date : {now} (UTC+8)"));
+    lines.push("# 数据源: Loyalsoldier/surge-rules release/direct.txt (DOMAIN-SET)".into());
+    lines.push("# ====================================================".into());
+    lines.push(String::new());
+    lines.push("# ==== 编译统计（在线源） ====".into());
+    lines.push(format!("# {}", stats_summary(&result.stats)));
+    lines.push(format!(
+        "# 自定义域名: {}",
+        stats_summary(&result.custom_stats)
+    ));
+    lines.push(String::new());
+    lines.push("# ==== 规则语义说明 ====".into());
+    lines.push("# 源 DOMAIN-SET：不带点=精确匹配；前导点=后缀匹配（含域名本身及全部子域）".into());
+    lines.push("# AdGuard Home upstream_dns_file：[/domain/] 为后缀匹配，无精确匹配语法".into());
+    let exact_total = result.stats.expanded_exact
+        + result.stats.skipped_exact
+        + result.custom_stats.expanded_exact
+        + result.custom_stats.skipped_exact;
+    lines.push(format!(
+        "# ⚠️ 精确匹配规则共 {} 条（在线 {} + 自定义 {}），策略=({})：{}",
+        exact_total,
+        result.stats.expanded_exact + result.stats.skipped_exact,
+        result.custom_stats.expanded_exact + result.custom_stats.skipped_exact,
+        args.exact_policy.label(),
+        if args.exact_policy == ExactPolicy::Expand {
+            "已【扩大】为后缀匹配（会额外匹配其子域名），非无损转换"
+        } else {
+            "已跳过，未写入产物"
+        }
+    ));
+    lines.push(format!(
+        "# 不支持/跳过规则: keyword+unsupported={}, invalid={}（详见编译日志）",
+        result.stats.unsupported, result.stats.invalid
+    ));
+    lines.push(format!(
+        "# 国内上游 {} 条；默认（全球）上游 {} 条；合组大小 {}",
+        result.upstream_count,
+        result.global_lines.len(),
+        DOMAINS_PER_GROUP
+    ));
+    lines.push(String::new());
 
+    lines.push("# === 全局基础 DNS（默认上游，未命中分流规则时生效） ===".into());
+    lines.extend(result.global_lines.iter().cloned());
+    lines.push(String::new());
+    lines.push("# === 你的自定义域名规则 ===".into());
+    lines.extend(result.custom_lines.iter().cloned());
+    lines.push(String::new());
+    lines.push("# === 在线订阅的域名规则 ===".into());
+    lines.extend(result.online_lines.iter().cloned());
+    lines
+}
+
+fn write_output(lines: &[String], output_path: &Path) {
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|e| die(&format!("无法创建输出目录 {parent:?}: {e}")));
+        }
+    }
+    let mut tmp_name = output_path.as_os_str().to_os_string();
+    tmp_name.push(".tmp");
+    let tmp_out = PathBuf::from(tmp_name);
+
+    let mut f = fs::File::create(&tmp_out)
+        .unwrap_or_else(|e| die(&format!("无法创建临时输出文件 {tmp_out:?}: {e}")));
+    for line in lines {
+        writeln!(f, "{line}").unwrap_or_else(|e| {
+            let _ = fs::remove_file(&tmp_out);
+            die(&format!("写入规则文件失败: {e}"));
+        });
+    }
+    if let Err(e) = f.flush().and_then(|_| f.sync_all()) {
+        let _ = fs::remove_file(&tmp_out);
+        die(&format!("刷新规则文件失败: {e}"));
+    }
+    drop(f);
+    fs::rename(&tmp_out, output_path).unwrap_or_else(|e| {
+        let _ = fs::remove_file(&tmp_out);
+        die(&format!("无法写入输出文件 {output_path:?}: {e}"));
+    });
+}
+
+fn print_report(result: &CompileResult, output_path: &Path, args: &Args) {
     log("✨ 规则文件编译完毕！");
     log(&format!("📁 输出路径 : {}", output_path.display()));
     log("-------------------------------------");
-    log("📊 编译统计报告:");
-    log(&format!("   Global DNS  : {}", result.global_lines.len()));
-    log(&format!("   Custom Rule : {}", result.custom_count));
-    log(&format!("   Online Rule : {}", result.online_count));
+    log("📊 编译统计报告（在线源）:");
+    log(&format!("   {}", stats_summary(&result.stats)));
+    log(&format!(
+        "   自定义域名: {}",
+        stats_summary(&result.custom_stats)
+    ));
     log("-------------------------------------");
-    log(&format!("   Total Rules : {}", total));
+    log(&format!("   默认上游      : {}", result.global_lines.len()));
+    log(&format!("   国内上游      : {}", result.upstream_count));
+    log(&format!("   自定义规则    : {}", result.custom_count));
+    log(&format!("   在线规则域名  : {}", result.online_count));
+    log(&format!(
+        "   规则总行数    : {}",
+        result.custom_lines.len() + result.online_lines.len()
+    ));
     log("-------------------------------------");
+
+    let exact_total = result.stats.expanded_exact
+        + result.stats.skipped_exact
+        + result.custom_stats.expanded_exact
+        + result.custom_stats.skipped_exact;
+    if exact_total > 0 {
+        warn(&format!(
+            "源规则中 {} 条为【精确匹配】（Surge DOMAIN-SET 不带点写法）。\
+             AdGuard Home 的 upstream_dns_file 没有精确匹配语法，策略 {}：{}。\
+             这不是静默丢弃，也不是无损转换，详见产物头部注释、README 与审计报告。",
+            exact_total,
+            args.exact_policy.label(),
+            if args.exact_policy == ExactPolicy::Expand {
+                "已扩大为后缀匹配（额外覆盖子域名）"
+            } else {
+                "已跳过"
+            }
+        ));
+        for s in result
+            .stats
+            .samples
+            .get("exact")
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .take(5)
+        {
+            warn(&format!("   精确匹配样本: {s}"));
+        }
+    }
+    for kind in ["keyword", "unsupported", "invalid"] {
+        if let Some(v) = result.stats.samples.get(kind) {
+            if !v.is_empty() {
+                warn(&format!("不支持/非法规则 [{kind}] 样本: {v:?}"));
+            }
+        }
+    }
+}
+
+fn write_report_json(
+    path: &Path,
+    result: &CompileResult,
+    args: &Args,
+    check: (usize, usize, usize),
+) {
+    let s = &result.stats;
+    let c = &result.custom_stats;
+    let body = format!(
+        "{{\n  \"generated_at\": \"{}\",\n  \"exact_match_policy\": \"{}\",\n  \"source\": \"Loyalsoldier/surge-rules release/direct.txt\",\n  \"online\": {{\n    \"raw_lines\": {},\n    \"effective_records\": {},\n    \"parsed\": {},\n    \"converted\": {},\n    \"unique_domains\": {},\n    \"duplicates\": {},\n    \"invalid\": {},\n    \"unsupported\": {},\n    \"dropped\": {},\n    \"parent_covered_removed\": {},\n    \"root_domains\": {},\n    \"sub_domains\": {},\n    \"punycode_converted\": {},\n    \"expanded_exact\": {},\n    \"skipped_exact\": {},\n    \"by_kind\": {}\n  }},\n  \"custom\": {{ \"converted\": {}, \"unique_domains\": {} }},\n  \"upstream_count\": {},\n  \"default_upstream_count\": {},\n  \"custom_rules\": {},\n  \"online_domains\": {},\n  \"validation\": {{ \"rule_lines\": {}, \"domain_entries\": {}, \"default_upstream_lines\": {} }}\n}}\n",
+        chrono_now(),
+        args.exact_policy.label(),
+        s.raw_lines, s.effective_records, s.parsed, s.converted, s.unique_domains,
+        s.duplicates, s.invalid, s.unsupported, s.dropped, s.parent_covered_removed,
+        s.root_domains, s.sub_domains, s.punycode_converted, s.expanded_exact, s.skipped_exact,
+        json_map(&s.by_kind),
+        c.converted, c.unique_domains,
+        result.upstream_count, result.global_lines.len(),
+        result.custom_count, result.online_count,
+        check.0, check.1, check.2
+    );
+    fs::write(path, body).unwrap_or_else(|e| die(&format!("写入统计 JSON 失败: {e}")));
+}
+
+fn json_map(m: &std::collections::HashMap<&'static str, usize>) -> String {
+    let mut v: Vec<_> = m.iter().collect();
+    v.sort_by_key(|(k, _)| **k);
+    let parts: Vec<String> = v.iter().map(|(k, n)| format!("\"{k}\": {n}")).collect();
+    format!("{{{}}}", parts.join(", "))
 }
 
 // =============================================================================
-// Utility: 临时目录 (std only)
+// 临时目录
 // =============================================================================
 
 fn create_temp_dir() -> TempDirGuard {
-    let base = env::temp_dir();
-    let suffix: String = std::iter::repeat_with(fast_random_char).take(10).collect();
-    let path = base.join(format!("agrule.{}-{}", process::id(), suffix));
-    fs::create_dir_all(&path).unwrap_or_else(|e| {
-        die(&format!("创建临时目录失败 {:?}: {}", path, e));
-    });
-    TempDirGuard { path }
-}
-
-fn fast_random_char() -> char {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::SystemTime;
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -664,21 +603,25 @@ fn fast_random_char() -> char {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0) as usize;
-    let idx = nanos.wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed));
-    let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    chars[idx % chars.len()] as char
+    let suffix: String = (0..10)
+        .map(|i| {
+            let idx = nanos.wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed)) + i;
+            b"abcdefghijklmnopqrstuvwxyz0123456789"[idx % 36] as char
+        })
+        .collect();
+    let path = env::temp_dir().join(format!("agrule.{}-{suffix}", process::id()));
+    fs::create_dir_all(&path).unwrap_or_else(|e| die(&format!("创建临时目录失败 {path:?}: {e}")));
+    TempDirGuard { path }
 }
 
 struct TempDirGuard {
     path: PathBuf,
 }
-
 impl TempDirGuard {
     fn path(&self) -> &Path {
         &self.path
     }
 }
-
 impl Drop for TempDirGuard {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
@@ -691,203 +634,121 @@ impl Drop for TempDirGuard {
 
 fn main() {
     let args = parse_args();
-
-    // Step 1: 初始化配置
     let (f_global, f_upstream, f_custom) = init_config(&args.config_dir);
-
-    // Step 2: 创建临时目录
     let tmp_dir = create_temp_dir();
 
-    // Step 3: 下载在线规则
-    let dl_path = download_rules(tmp_dir.path());
+    let rules_content = match &args.rules_file {
+        Some(p) => {
+            log(&format!("📄 使用本地规则文件: {}", p.display()));
+            read_text_file(p, "本地规则文件")
+        }
+        None => {
+            let client: Client = build_client(die);
+            let p = download_rules(&client, tmp_dir.path(), log, warn, die);
+            read_text_file(&p, "下载的规则文件")
+        }
+    };
 
-    // Step 4: 编译规则
-    let result = compile_rules(&f_global, &f_upstream, &f_custom, &dl_path);
+    let result = compile_rules(&f_global, &f_upstream, &f_custom, &rules_content, &args);
+    let lines = build_output_lines(&result, &args);
 
-    // Step 4.5: 语法自检——有问题的产物会让 AdGuard Home 起不来，宁可不发
-    if let Err(e) = validate_rule_lines(&result.custom_lines)
-        .and_then(|_| validate_rule_lines(&result.online_lines))
-    {
-        die(&format!("生成的规则语法自检失败：{e}"));
+    // 发布前全文件自检：任何一行不合法都会让 AdGuard Home 启动失败
+    let check =
+        validate_all_lines(&lines).unwrap_or_else(|e| die(&format!("生成的规则语法自检失败：{e}")));
+    log(&format!(
+        "✅ 语法自检通过：规则行 {} / 域名条目 {} / 默认上游行 {}",
+        check.0, check.1, check.2
+    ));
+
+    write_output(&lines, &args.output);
+    print_report(&result, &args.output, &args);
+    if let Some(p) = &args.report_json {
+        write_report_json(p, &result, &args, check);
     }
-
-    // Step 5: 写入输出（同目录临时文件 + 原子 rename）
-    write_output(&result, &args.output);
-
-    // Step 6: 打印报告
-    print_report(&result, &args.output);
 }
 
 // =============================================================================
-// Tests
+// 集成测试（主流程）
 // =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
-    #[test]
-    fn plain_domain_kept() {
-        assert_eq!(clean_domain_line("example.com"), Some("example.com".into()));
+    fn temp_dir(tag: &str) -> PathBuf {
+        let p = env::temp_dir().join(format!("agh-main-test-{tag}-{}", process::id()));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn write(p: &Path, s: &str) {
+        fs::write(p, s).unwrap();
     }
 
     #[test]
-    fn leading_and_trailing_dots_trimmed() {
-        assert_eq!(
-            clean_domain_line(".example.com."),
-            Some("example.com".into())
+    fn end_to_end_with_local_rules() {
+        let dir = temp_dir("e2e");
+        let cfg = dir.join("config");
+        fs::create_dir_all(&cfg).unwrap();
+        write(
+            &cfg.join("dns_global.txt"),
+            "tls://1.1.1.1\nhttps://dns.google/dns-query\n",
         );
-        assert_eq!(clean_domain_line(".0.zone"), Some("0.zone".into()));
-    }
-
-    #[test]
-    fn uppercase_lowercased() {
-        assert_eq!(clean_domain_line("EXAMPLE.COM"), Some("example.com".into()));
-    }
-
-    #[test]
-    fn whitespace_and_crlf_trimmed() {
-        assert_eq!(
-            clean_domain_line("  example.com \r\n"),
-            Some("example.com".into())
+        write(
+            &cfg.join("dns_upstream.txt"),
+            "https://doh.pub/dns-query\ntls://dot.pub\n223.5.5.5\n",
         );
-    }
-
-    #[test]
-    fn surge_prefixes_stripped() {
-        assert_eq!(
-            clean_domain_line("domain:example.com"),
-            Some("example.com".into())
+        write(
+            &cfg.join("domain_custom.txt"),
+            "my-nas.local\n.example.org\n",
         );
-        assert_eq!(
-            clean_domain_line("domain-suffix:example.com"),
-            Some("example.com".into())
-        );
-    }
+        let rules: String = (0..60000).map(|i| format!(".d{i}.example.com\n")).collect();
+        let rules_file = dir.join("rules.txt");
+        write(&rules_file, &rules);
+        let out = dir.join("adguard_home_rules.txt");
 
-    #[test]
-    fn domain_keyword_rejected() {
-        assert_eq!(clean_domain_line("domain-keyword:google"), None);
-    }
-
-    #[test]
-    fn invalid_entries_rejected() {
-        assert_eq!(clean_domain_line(""), None);
-        assert_eq!(clean_domain_line("   "), None);
-        assert_eq!(clean_domain_line("# comment"), None);
-        assert_eq!(clean_domain_line("a..b.com"), None);
-        assert_eq!(clean_domain_line("-a.com"), None);
-        assert_eq!(clean_domain_line("a-.com"), None);
-        assert_eq!(clean_domain_line("under_score.com"), None);
-        assert_eq!(clean_domain_line("hello world.com"), None);
-    }
-
-    #[test]
-    fn overly_long_domain_rejected() {
-        let long = format!("{}.com", "a".repeat(250));
-        assert_eq!(clean_domain_line(&long), None);
-        let ok = format!("{}.com", "a".repeat(63));
-        assert!(clean_domain_line(&ok).is_some());
-    }
-
-    #[test]
-    fn single_label_allowed() {
-        assert_eq!(clean_domain_line("localhost"), Some("localhost".into()));
-    }
-
-    #[test]
-    fn valid_domain_boundaries() {
-        assert!(is_valid_domain("a-b.cn"));
-        assert!(is_valid_domain("localhost"));
-        assert!(!is_valid_domain(""));
-        assert!(!is_valid_domain("."));
-        assert!(!is_valid_domain("a..b"));
-        assert!(!is_valid_domain("a-.com"));
-    }
-
-    #[test]
-    fn grouping_syntax_and_chunking() {
-        let ups = "https://doh.pub/dns-query";
-        let domains: Vec<String> = (0..120).map(|i| format!("d{i}.example.com")).collect();
-
-        let lines = build_rule_lines(&domains, ups, true);
-        assert_eq!(lines.len(), 3); // 50 + 50 + 20
-                                    // AdGuard Home 语法：[/d1/d2/.../]<upstreams>，闭合斜杠在 ] 之前
-        assert!(lines[0].starts_with("[/d0.example.com/d1.example.com/"));
-        assert!(lines[0].ends_with("/d49.example.com/]https://doh.pub/dns-query"));
-        assert!(!lines[0].contains("]/"), "合组行不得写成 ]/ 形式");
-
-        let single = build_rule_lines(&domains[..1].to_vec(), ups, false);
-        assert_eq!(single[0], "[/d0.example.com/]https://doh.pub/dns-query");
-
-        // 产物必须能被 AdGuard Home 的语法解析，否则整机起不来
-        validate_rule_lines(&lines).expect("grouped lines must be valid");
-        validate_rule_lines(&single).expect("single lines must be valid");
-    }
-
-    #[test]
-    fn validator_rejects_wrong_closing_bracket() {
-        // 这是本项目此前实际生成的错误形式
-        let bad = vec!["[/a.com/b.com]/1.1.1.1".to_string()];
-        assert!(validate_rule_lines(&bad).is_err());
-
-        let empty_seg = vec!["[/a.com//b.com/]1.1.1.1".to_string()];
-        assert!(validate_rule_lines(&empty_seg).is_err());
-
-        let no_ups = vec!["[/a.com/]".to_string()];
-        assert!(validate_rule_lines(&no_ups).is_err());
-
-        let numeric_tld = vec!["[/1.1.1.1/]1.1.1.1".to_string()];
-        assert!(validate_rule_lines(&numeric_tld).is_err());
-
-        let good = vec!["[/a.com/]1.1.1.1".to_string()];
-        assert!(validate_rule_lines(&good).is_ok());
-
-        // 注释行（空上游降级）直接跳过
-        let commented = vec!["# [未配置上游DNS] /a.com/".to_string()];
-        assert!(validate_rule_lines(&commented).is_ok());
-    }
-
-    #[test]
-    fn prefix_with_space_is_not_dropped() {
-        assert_eq!(
-            clean_domain_line("domain: example.com"),
-            Some("example.com".into())
-        );
-        let spaced = clean_domain_line("domain-suffix:  .Example.COM ");
-        assert_eq!(spaced, Some("example.com".into()));
-    }
-
-    #[test]
-    fn ip_like_entry_rejected() {
-        // 末级标签全数字会被 AdGuard Home 判为非法域名，必须在生成前拦掉
-        assert_eq!(clean_domain_line("1.1.1.1"), None);
-        assert_eq!(clean_domain_line("domain:223.5.5.5"), None);
-        // 数字开头但末级为字母的真实域名照常保留
-        assert_eq!(clean_domain_line("000114.com"), Some("000114.com".into()));
-    }
-
-    #[test]
-    fn empty_upstream_falls_back_to_comments() {
-        let domains = vec!["example.com".to_string()];
-        let lines = build_rule_lines(&domains, "", false);
-        assert_eq!(lines, vec!["# [未配置上游DNS] /example.com/"]);
-    }
-
-    #[test]
-    fn upstreams_deduped_and_lowercased() {
-        let dir = env::temp_dir().join(format!("agrule-test-{}", process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("dns_upstream.txt");
-        fs::write(
-            &path,
-            "https://doh.pub/dns-query\nTLS://DOT.PUB\n# comment\n\ntls://dot.pub\n",
-        )
-        .unwrap();
-        assert_eq!(
-            load_upstreams(&path),
-            "https://doh.pub/dns-query tls://dot.pub"
-        );
+        let args = Args {
+            output: out.clone(),
+            config_dir: cfg.clone(),
+            rules_file: Some(rules_file),
+            exact_policy: ExactPolicy::Expand,
+            min_domains: 50_000,
+            report_json: None,
+        };
+        let (fg, fu, fc) = init_config(&cfg);
+        let content = read_text_file(args.rules_file.as_ref().unwrap(), "test rules");
+        let result = compile_rules(&fg, &fu, &fc, &content, &args);
+        let lines = build_output_lines(&result, &args);
+        let check = validate_all_lines(&lines).expect("产物必须通过语法自检");
+        assert_eq!(check.2, 2, "必须有 2 条默认上游行");
+        assert!(check.1 >= 50_000);
+        // 输出稳定：两次编译的规则行部分完全一致
+        let result2 = compile_rules(&fg, &fu, &fc, &content, &args);
+        let lines2 = build_output_lines(&result2, &args);
+        let body: Vec<&String> = lines.iter().skip_while(|l| !l.starts_with("[/")).collect();
+        let body2: Vec<&String> = lines2.iter().skip_while(|l| !l.starts_with("[/")).collect();
+        assert_eq!(body, body2, "编译结果必须稳定可复现");
+        write_output(&lines, &out);
+        assert!(fs::read_to_string(&out).unwrap().contains("tls://1.1.1.1"));
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn exact_skip_policy_is_visible() {
+        let mut s = DomainStats::default();
+        let v = process_file("a.com\n.b.com\n", ExactPolicy::Skip, &mut s);
+        assert_eq!(v, vec!["b.com".to_string()]);
+        assert_eq!(s.skipped_exact, 1);
+        assert_eq!(s.dropped, 1);
+    }
+
+    #[test]
+    fn json_map_is_sorted() {
+        let mut m: HashMap<&'static str, usize> = HashMap::new();
+        m.insert("z", 1);
+        m.insert("a", 2);
+        assert_eq!(json_map(&m), "{\"a\": 2, \"z\": 1}");
     }
 }

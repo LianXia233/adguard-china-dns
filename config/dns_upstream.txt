@@ -1,8 +1,19 @@
 # 国内高速上游 DNS（命中分流规则时使用）
+# 全部为服务商官方公开端点；同一服务商的多协议入口不算独立故障域。
+# 火山引擎公共解析 PublicDNS 官方明确仅提供 UDP/TCP 明文，未提供 DoH/DoT/DoQ。
+
+# 阿里云公共 DNS（官方 DoH）
 https://dns.alidns.com/dns-query
+
+# DNSPod 公共 DNS（官方 DoH / DoT；同一服务，仅作协议级冗余）
 https://doh.pub/dns-query
 tls://dot.pub
-https://doh.volcengine.com/dns-query
-tls://dot.volcengine.com
-# 国密 SM2 端点（标准 TLS 客户端亦可正常握手）
-https://sm2.doh.pub/dns-query
+
+# 360 安全 DNS（官方 DoH）
+https://doh.360.cn/dns-query
+
+# 火山引擎公共解析 PublicDNS（官方明文 UDP）
+180.184.1.1
+
+# 明文 UDP 兜底：免 Bootstrap，CDN 调度贴近运营商出口
+223.5.5.5

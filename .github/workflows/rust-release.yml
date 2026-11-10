@@ -9,7 +9,11 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'config/**'
-      - '.github/workflows/rust-release.yml'
+      # 验证脚本 / 兼容性工具 / 连通性脚本变更必须触发发布前门禁
+      - 'tools/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 # 定时与推送同时触发时取消旧运行，避免并发删建 Release 互相踩踏
@@ -20,6 +24,10 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  # 与 README / 兼容性验证保持一致的当前正式版
+  AGH_VERSION: v0.107.80
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,6 +37,12 @@ jobs:
 
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装 Go 工具链（官方 dnsproxy 兼容性校验）
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          check-latest: true
 
       - name: 缓存 Cargo 依赖
         uses: Swatinem/rust-cache@v2
@@ -42,11 +56,35 @@ jobs:
       - name: 单元测试
         run: cargo test --release --locked
 
+      - name: 验证器单元测试
+        run: python3 tools/test_validate_upstream_dns_file.py
+
       - name: 编译发布版本
         run: cargo build --release --locked
 
       - name: 裁剪二进制体积
         run: strip target/release/adguard-china-dns
+
+      # 配置门禁：上游条目必须能被 dnsproxy 的 URI 语法接受，且两个清单都非空
+      - name: 上游配置检查
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'tools')
+          import validate_upstream_dns_file as v
+          bad = []
+          for f in ('config/dns_global.txt', 'config/dns_upstream.txt'):
+              ups = [l.strip() for l in open(f, encoding='utf-8')
+                     if l.strip() and not l.strip().startswith('#')]
+              if not ups:
+                  bad.append(f'{f}: 没有启用任何上游')
+              for u in ups:
+                  ok, why = v.valid_upstream(u)
+                  if not ok:
+                      bad.append(f'{f}: {u} -> {why}')
+          print('上游配置校验:', '通过' if not bad else bad)
+          sys.exit(1 if bad else 0)
+          PY
 
       - name: 生成规则文件
         run: |
@@ -54,27 +92,49 @@ jobs:
           # 显式指定仓库内 config/ 目录（默认会取可执行文件同级目录，导致仓库配置被忽略）
           CONFIG_DIR="$GITHUB_WORKSPACE/config" \
           OUTPUT_FILE="output/adguard_home_rules.txt" \
-          ./target/release/adguard-china-dns
+          ./target/release/adguard-china-dns --report-json output/build_report.json
 
-      # 语法门禁：AdGuard Home 的 upstream_dns_file 只要有一行不合 dnsproxy 语法，
-      # 启动就直接 fatal、DNS 全停。产物必须在发布前本地校验，避免把砖头发到 latest。
+      # 语法门禁：upstream_dns_file 只要有一行不合法，AdGuard Home 启动就 fatal、DNS 全停。
+      # 注意 AdGuardHome --check-config 不解析该文件内容（已在 tools/agh_runtime_check.py 对照验证），
+      # 所以必须靠专用校验器 + 官方 dnsproxy + 真实 AGH 启动三层拦截。
       - name: 产物语法校验（发布门禁）
         run: python3 tools/validate_upstream_dns_file.py output/adguard_home_rules.txt
 
       - name: 产物规模校验（防止上游格式漂移导致静默塌陷）
         run: |
-          # 合组写法每行 50 个域名，域名总数应在 10 万量级；跌破阈值说明在线源改版或下载被截断
-          N=$(python3 -c 'import re,sys
-          t=0
-          for l in open("output/adguard_home_rules.txt",encoding="utf-8"):
-              m=re.match(r"^\[/([^]]*)/\]",l)
-              if m: t+=m.group(1).count("/")+1
+          N=$(python3 -c 'import re
+          t = 0
+          for l in open("output/adguard_home_rules.txt", encoding="utf-8"):
+              m = re.match(r"^\[/([^]]*)/\]", l)
+              if m:
+                  t += m.group(1).count("/") + 1
           print(t)')
           echo "产物域名条目数：${N}"
           if [ "${N}" -lt 50000 ]; then
             echo "::error::域名条目数 ${N} < 50000，疑似在线源格式漂移或下载不完整，终止发布"
             exit 1
           fi
+
+      # 用 AdGuard Home v0.107.80 实际依赖的 dnsproxy v0.86.0 源码解析产物，
+      # 而非自编正则；校验默认上游、域名组数量、多上游、未命中域名回落。
+      - name: 官方 dnsproxy 兼容性校验（发布门禁）
+        run: |
+          cd tools/agh_compat
+          go run . ../../output/adguard_home_rules.txt
+
+      # 真实 AdGuard Home 二进制加载：确认不出现 wrong upstream format / 非法域名错误，
+      # DNS 端口能正常监听。CI 环境跨网络，实际上游查询依赖所在网络，故只做加载验证。
+      - name: 真实 AdGuard Home 加载验证（发布门禁）
+        run: |
+          curl -fsSL --retry 3 --max-time 180 -o /tmp/agh.tar.gz \
+            "https://github.com/AdguardTeam/AdGuardHome/releases/download/${AGH_VERSION}/AdGuardHome_linux_amd64.tar.gz"
+          mkdir -p /tmp/aghbin
+          tar xzf /tmp/agh.tar.gz -C /tmp/aghbin
+          python3 tools/agh_runtime_check.py \
+            --agh /tmp/aghbin/AdGuardHome/AdGuardHome \
+            --rules output/adguard_home_rules.txt \
+            --skip-queries \
+            --report output/agh_runtime_report.json
 
       - name: 获取发布时间
         id: timestamp
@@ -107,8 +167,7 @@ jobs:
 
       - name: 清理历史 Release（只保留最新）
         run: |
-          # 每次编译都清掉陈旧产物，Release 列表里始终只有最新一份规则文件。
-          # 安全性由前置门禁保证：语法校验 + 规模校验不通过就不会发布，也就不会出现"最新即砖"。
+          # 安全性由前置门禁保证：任一质量门禁不通过就不会发布，不会出现"最新即砖"。
           NEW="${{ steps.timestamp.outputs.tag }}"
           if [ -z "$NEW" ]; then
             echo "新 Release tag 为空，跳过清理"

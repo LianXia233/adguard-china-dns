@@ -1,4 +1,5 @@
-# 个人直连域名
+# 个人直连域名（每行一个；语义说明见 README）
+# 不带点 = 精确匹配，带前导点 = 后缀匹配（含域名本身及全部子域）
 xoyo.com
 calatopia.com
 kurogames.com
@@ -7,4 +8,4 @@ wegame.com.cn
 ugreengroup.com
 wanmei.com
 
-# 在此按需添加你的直连域名（路由器面板、NAS、内网服务等，写法示例见 README），每行一个
+# 在此按需添加你的直连域名，每行一个

@@ -1,3 +1,6 @@
 adguard_home_rules.txt
 output/
 target/
+tools/agh_compat/agh-compat
+__pycache__/
+*.pyc

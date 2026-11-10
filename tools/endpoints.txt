@@ -1,0 +1,33 @@
+# DNS 上游连通性实测清单（供 tools/test_upstreams.py 使用）
+# 用法：python3 tools/test_upstreams.py tools/endpoints.txt
+# 结果仅代表当前运行环境；DoQ 只做 UDP/853 可达性探测，QUIC 握手标记为未验证。
+
+# --- 当前配置启用的国内上游 ---
+https://dns.alidns.com/dns-query
+https://doh.pub/dns-query
+tls://dot.pub
+https://doh.360.cn/dns-query
+180.184.1.1
+223.5.5.5
+
+# --- 当前配置启用的默认（全球）上游 ---
+tls://1.1.1.1
+
+# --- 官方候选端点：按你的网络实测结果决定是否启用 ---
+https://dns.google/dns-query
+https://unfiltered.adguard-dns.com/dns-query
+https://doh.opendns.com/dns-query
+https://cloudflare-dns.com/dns-query
+tls://dns.alidns.com
+tls://dot.360.cn
+119.29.29.29
+114.114.114.114
+9.9.9.9
+
+# --- 已知失效/错误端点（如需回归对照可自行取消注释） ---
+# https://doh.volcengine.com/dns-query   # 火山引擎 PublicDNS 官方不提供 DoH
+# tls://dot.volcengine.com               # 域名不存在
+# https://208.67.222.222/dns-query       # IP 直连 DoH，TLS 端点不匹配
+# https://101.101.101.101/dns-query      # 非全球公共 DNS 官方 DoH 端点
+# tls://1.0.0.1                          # 与 tls://1.1.1.1 同服务，本环境超时
+# quic://dns.adguard-dns.com             # AdGuard DNS 过滤版（会拦截广告/跟踪器）

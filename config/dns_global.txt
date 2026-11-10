@@ -1,9 +1,16 @@
-# 全局兜底安全 DNS（未命中分流规则时使用，支持 DoH / DoT / DoQ）
-# 注：DNS64 仅适用于 IPv6-only / NAT64 网络，常规网络请勿启用（会返回不可路由的合成 AAAA）
-# https://dns64.dns.google/dns-query
-https://208.67.222.222/dns-query
-https://101.101.101.101/dns-query
-tls://1.0.0.1
+# 全球/海外默认上游（未命中分流规则时使用）
+# upstream_dns_file 非空时，本文件整体替代 dns.upstream_dns；
+# 裸上游行即默认上游，缺失会让 AdGuard Home 报 no default upstreams 并启动失败。
+
+# Cloudflare 1.1.1.1 官方 DoT：IP 直连免 Bootstrap，TLS 证书含 1.1.1.1 SAN
+# 实测（中国大陆/北京腾讯云出口）：可用，A/AAAA 正常返回
 tls://1.1.1.1
-quic://dns.adguard-dns.com
-https://dns.google/dns-query
+
+# 以下为官方端点示例，请按你所在网络的实测结果决定是否启用。
+# 中国大陆网络常封锁海外 443/853；load_balance 下混入不可达上游会让部分查询
+# 等到超时才切换，实测 Google DoH 在本环境 10s 超时导致 github.com 解析失败。
+# https://dns.google/dns-query                  # Google Public DNS 官方 DoH（需 Bootstrap）
+# https://unfiltered.adguard-dns.com/dns-query  # AdGuard DNS 无过滤（dns.adguard-dns.com 是过滤版）
+# https://doh.opendns.com/dns-query             # Cisco OpenDNS 官方 DoH
+# https://cloudflare-dns.com/dns-query          # Cloudflare 官方 DoH（与 tls://1.1.1.1 同服务）
+# 9.9.9.9                                      # Quad9 明文 UDP（跨境明文可能被劫持）
