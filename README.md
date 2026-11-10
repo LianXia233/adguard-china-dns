@@ -61,10 +61,10 @@ flowchart TD
     end
 
     subgraph Engine["🦀 Rust 核心编译引擎 (adguard-china-dns)"]
-        C1["双源自动容灾下载<br/>(GitHub 优先 ➔ CDN 回退)"]
+        C1["三源自动容灾下载<br/>(GitHub 原源 ➔ jsDelivr 双 CDN 节点回退)"]
         C2["完整性校验<br/>(规则数 > 1000 行阈值检测)"]
-        C3["域名归一化清洗<br/>(去除前缀/特殊字符/正则过滤)"]
-        C4["内存流式去重<br/>(HashSet 毫秒级去重)"]
+        C3["域名归一化清洗<br/>(去除前缀/特殊字符/手写字符串校验)"]
+        C4["内存去重 + 分组合块<br/>(HashSet 毫秒级去重，[/d1/d2/…/] 合组输出)"]
         C5["上游安全兜底<br/>(空上游自动降级为注释态)"]
     end
 
@@ -102,8 +102,9 @@ flowchart TD
 <a id="features"></a>
 ## ✨ 核心特性
 
-- ⚡ **极致性能与低资源占用**：基于 Rust 原生静态编译，内部采用 `HashSet` 域名归一化索引去重，编译数万条规则仅需数十毫秒，无 Shell 管道频繁 Fork 进程的性能开销。
-- 🔄 **智能双源自动容灾**：在线规则下载默认优先采用 GitHub 原源直连，遇阻或超时秒级回退至 jsDelivr CDN 镜像，保障抓取高可用。
+- ⚡ **极致性能与低资源占用**：基于 Rust 原生静态编译，内部采用手写域名校验与 `HashSet` 归一化去重（零正则引擎开销），11 万条规则编译全程亚秒级完成，无 Shell 管道频繁 Fork 进程的性能开销。
+- 🔄 **智能三源自动容灾**：在线规则下载默认优先采用 GitHub 原源直连，遇阻或超时秒级回退至 jsDelivr 双 CDN 节点镜像，保障抓取高可用。
+- 📦 **产物极致精简**：采用 AdGuard Home 原生多域名合组语法 `[/d1/d2/…/]upstream`，11 万条规则的产物体积从约 16MB 压缩至约 1.8MB（-89%），规则行数从 11 万降至约 2200 行，云端下载与 AdGuard Home 加载更快。
 - 🛡️ **严格行数阈值校验**：抓取结果不足 1000 行立即触发告警并终止覆写，杜绝因上游源损坏或网络波动生成空白规则毁坏现有线上配置。
 - 🔒 **空上游安全无缝降级**：当未配置 `dns_upstream.txt` 时，自动将所有域名转换为带 `#` 的注释态规则，平滑降级使用全局 DNS 解析，避免 AdGuard Home 语法报错。
 - 📦 **零运行时系统依赖**：彻底摆脱传统脚本对 `bash`、`curl`、`awk`、`sed` 等系统工具链的依赖，单一静态二进制，即开即用。
@@ -115,9 +116,9 @@ flowchart TD
 | 对比维度 | 传统 Shell 脚本方案 | 本项目 Rust 编译引擎 |
 | :--- | :--- | :--- |
 | **运行时依赖** | 强依赖 Bash、cURL、Awk、Sed、Grep 等系统组件 | **零依赖**，单一静态编译二进制文件 |
-| **网络容灾** | 单一源拉取，遇阻或断网直接报错中断 | **双源自动容灾**（GitHub 直连 ➔ jsDelivr CDN 镜像） |
+| **网络容灾** | 单一源拉取，遇阻或断网直接报错中断 | **三源自动容灾**（GitHub 直连 ➔ jsDelivr 双 CDN 镜像） |
 | **脏数据防护** | 无法准确校验内容完整度，容易生成空规则 | **严格行数校验**（不足 1000 行拒绝覆写） |
-| **去重与内存** | 管道多进程频繁 Fork 过滤，IO 与 CPU 开销高 | 内存流式处理，`HashSet` 极致毫秒级索引去重 |
+| **去重与内存** | 管道多进程频繁 Fork 过滤，IO 与 CPU 开销高 | 内存流式处理，`HashSet` 毫秒级去重 + 多域名合组输出 |
 | **容错机制** | 上游 DNS 为空时语法错乱可能引发服务崩溃 | **智能注释态降级**，规则完整保留且安全解析 |
 | **跨平台性** | 局限于类 Unix 环境，Windows / 嵌入式难适配 | 跨平台支持 Linux (x86_64/ARM/MIPS)、macOS、Windows |
 
@@ -192,16 +193,20 @@ adguard-china-dns
 
 | 环境变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `OUTPUT_FILE` | `$TMPDIR/adguard_home_rules.txt` 或 `/tmp/...` | 最终生成的分流规则输出文件路径 |
+| `OUTPUT_FILE` | 系统临时目录下的 `adguard_home_rules.txt`（Windows 为 `%TEMP%`，Unix 为 `$TMPDIR` 或 `/tmp`） | 最终生成的分流规则输出文件路径 |
 | `CONFIG_DIR` | 二进制程序同级目录下的 `config/` | 配置文件目录路径 |
-| `TMPDIR` | `/tmp` | 临时文件存放目录 |
 
-**自定义路径运行示例**：
+亦可通过命令行参数覆盖（优先级：**CLI 参数 > 环境变量 > 默认值**）：
 
 ```bash
-CONFIG_DIR="/opt/adg-rule-compiler/config" \
-OUTPUT_FILE="/opt/adguardhome/conf/adguard_home_rules.txt" \
-adguard-china-dns
+# 查看帮助与版本
+adguard-china-dns --help
+adguard-china-dns --version
+
+# 指定输出路径与配置目录
+adguard-china-dns \
+  --output /opt/adguardhome/conf/adguard_home_rules.txt \
+  --config-dir /opt/adg-rule-compiler/config
 ```
 
 ---
@@ -220,11 +225,19 @@ dns:
   # 指定分流规则文件路径
   upstream_dns_file: /opt/adguardhome/conf/adguard_home_rules.txt
 
-  # 建议配置快速 Bootstrap DNS 用于解析 DoH 域名
+  # 建议配置快速 Bootstrap DNS 用于解析 DoH/DoT 域名
   bootstrap_dns:
     - 223.5.5.5
     - 119.29.29.29
+    - 1.1.1.1
+    - 8.8.8.8
 ```
+
+> [!IMPORTANT]
+> **版本要求**：本规则文件使用「单行多上游」（空格分隔）与「多域名合组」语法，要求 AdGuard Home **≥ v0.107.41**；更旧的版本会把整串上游误认为单一地址，导致分流失效。
+
+> [!NOTE]
+> **Bootstrap DNS 说明**：默认全局清单中的 `dns.google` 等域名上游需要经 Bootstrap DNS 解析地址。在大陆网络下用国内 Bootstrap（223.5.5.5 / 119.29.29.29）解析境外 DNS 域名存在被污染的可能（好在清单中已含多个 IP 直连条目兜底）。若观察到部分海外域名解析异常，可将 `1.1.1.1` / `8.8.8.8` 置前，或改用 `https://8.8.8.8/dns-query`、`tls://1.1.1.1` 这类免 Bootstrap 的 IP 直连条目。
 
 > [!WARNING]
 > **Docker 部署特别注意**：
@@ -259,7 +272,9 @@ docker restart adguardhome
 未命中分流规则或国内上游失效时使用的解析服务器（支持 DoH、DoT、DoQ 及标准 IP）：
 
 ```text
-https://dns64.dns.google/dns-query
+# 全局兜底安全 DNS（未命中分流规则时使用，支持 DoH / DoT / DoQ）
+# 注：DNS64 仅适用于 IPv6-only / NAT64 网络，常规网络请勿启用（会返回不可路由的合成 AAAA）
+# https://dns64.dns.google/dns-query
 https://208.67.222.222/dns-query
 https://101.101.101.101/dns-query
 tls://1.0.0.1
@@ -272,11 +287,14 @@ https://dns.google/dns-query
 命中分流规则库时采用的高速解析通道：
 
 ```text
-https://sm2.doh.pub/dns-query
-tls://dot.pub
+# 国内高速上游 DNS（命中分流规则时使用）
+https://dns.alidns.com/dns-query
 https://doh.pub/dns-query
+tls://dot.pub
 https://doh.volcengine.com/dns-query
 tls://dot.volcengine.com
+# 国密 SM2 端点（标准 TLS 客户端亦可正常握手）
+https://sm2.doh.pub/dns-query
 ```
 
 ### 3. 本地与自定义直连域名 (`config/domain_custom.txt`)
@@ -296,7 +314,19 @@ xoyo.com
 calatopia.com
 kurogames.com
 wegame.com.cn
+3gppnetwork.org
+ugreengroup.com
+wanmei.com
+
+# 在此按需添加你的直连域名，每行一个
+# example.com
 ```
+
+**配置语法与语义说明**：
+
+- 每行一条，支持 `#` 注释行与空行，Windows CRLF 换行亦可正常读取；
+- 自定义域名支持 Surge 风格前缀 `domain:` / `domain-suffix:`（编译时自动剥离）；`domain-keyword:` 行在 AdGuard Home 上游规则中无对应语义，会被**跳过并输出告警**；
+- Surge 的 `.example.com`（后缀匹配）与 `example.com`（精确匹配）会统一转为 AdGuard Home 的 `/example.com/`（匹配域名及其全部子域）。对本项目的「国内域名直连分流」场景，这一加宽是刻意设计。
 
 ---
 
@@ -309,10 +339,11 @@ wegame.com.cn
   - 🔄 **代码推送**：`src/**`、`Cargo.toml`、`config/**` 或流水线定义变更推送至 `main` 分支
   - 🖐️ **手动触发**：支持在 GitHub 仓库 Actions 控制台手动触发（`workflow_dispatch`）
 - **执行流程**：
-  1. 检出源码并构建高度裁剪的 Release 二进制产物
-  2. 运行编译器生成全量规则文件 `adguard_home_rules.txt`
-  3. 自动扫描并清理过往旧版 Release，保持仓库资产轻量整洁
-  4. 创建带有时间戳的新 Release（格式如 `YYYY-MM-DD HH:MM 更新`），上传发布规则资产
+  1. 质量门禁：`cargo fmt --check` + `cargo clippy -D warnings` + `cargo test`
+  2. 构建 Release 二进制（提交 `Cargo.lock` 并以 `--locked` 构建保证可复现，启用 rust-cache 依赖缓存加速）
+  3. 运行编译器（**显式读取仓库 `config/` 配置**）生成全量规则文件 `adguard_home_rules.txt`
+  4. **先创建新 Release、再清理旧版**（始终保留上一版，确保 `releases/latest/download` 下载链接全程可用），并启用 `concurrency` 并发组，避免定时与推送触发互相踩踏
+  5. Release 标题带时间戳（格式如 `YYYY-MM-DD HH:MM 更新`），仅附带规则文件资产
 
 ---
 
@@ -331,7 +362,7 @@ wegame.com.cn
 <summary><strong>Q: 下载规则过程中网络超时或失败，会导致现存规则被破坏吗？</strong></summary>
 
 > **完全不会**。
-> 1. 本项目具备 GitHub 直连 ➔ jsDelivr CDN 双源容灾机制；
+> 1. 本项目具备 GitHub 直连 ➔ jsDelivr 双 CDN 节点三源容灾机制；
 > 2. 内置严格的行数阈值保护（行数 < 1000 立即终止覆写）；
 > 3. 若下载彻底失败，程序会直接报错退出，现有的规则文件不会被修改或清空，AdGuard Home 将持续正常工作。
 </details>
@@ -347,9 +378,15 @@ wegame.com.cn
 <details>
 <summary><strong>Q: 生成的规则文件中域名与上游是什么对应关系？</strong></summary>
 
-> 编译器会自动将配置的所有国内上游拼接在域名之后，形如：
-> `[/example.com/]https://doh.pub/dns-query tls://dot.pub`
-> AdGuard Home 在解析该域名时，会按照其配置的 `upstream_mode`（如并发查询或最快响应模式）同时向这些国内上游发起请求。
+> 编译器会将配置的所有国内上游以空格分隔拼接在域名组之后，形如：
+> `[/example.com/foo.com/]https://doh.pub/dns-query tls://dot.pub`
+> 该「多域名合组 + 单行多上游」语法要求 AdGuard Home ≥ v0.107.41。同一域名组内的多个上游按你配置的 `upstream_mode` 生效（默认负载均衡随机选一，设为 `parallel` 则并发查询取最快响应）。
+</details>
+
+<details>
+<summary><strong>Q: 为什么规则文件只有两千多行，明明有 11 万个域名？</strong></summary>
+
+> 这是有意为之的体积优化。AdGuard Home 支持 dnsmasq 风格的多域名合组语法 `[/d1/d2/…/]upstream`，编译器将每 50 个域名合为一组、共享同一份上游列表，避免每条规则重复携带整串上游地址。产物体积从约 16MB 缩减至约 1.8MB（-89%），分流语义与逐行写法完全等价。
 </details>
 
 ---
@@ -368,6 +405,7 @@ adguard-china-dns/
 ├── src/
 │   └── main.rs                   # 规则拉取、清洗与聚合核心引擎
 ├── Cargo.toml                    # Rust 工程与依赖规格配置
+├── Cargo.lock                    # 依赖锁定文件（保证云端构建可复现）
 ├── CHANGELOG.md                  # 版本迭代日志
 ├── LICENSE                       # 开源协议 (GPL-3.0)
 └── README.md                     # 项目详细使用指南

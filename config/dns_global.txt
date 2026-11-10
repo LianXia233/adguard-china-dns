@@ -1,4 +1,6 @@
-https://dns64.dns.google/dns-query
+# 全局兜底安全 DNS（未命中分流规则时使用，支持 DoH / DoT / DoQ）
+# 注：DNS64 仅适用于 IPv6-only / NAT64 网络，常规网络请勿启用（会返回不可路由的合成 AAAA）
+# https://dns64.dns.google/dns-query
 https://208.67.222.222/dns-query
 https://101.101.101.101/dns-query
 tls://1.0.0.1

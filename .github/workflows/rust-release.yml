@@ -7,9 +7,15 @@ on:
     paths:
       - 'src/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'config/**'
       - '.github/workflows/rust-release.yml'
   workflow_dispatch:
+
+# 定时与推送同时触发时取消旧运行，避免并发删建 Release 互相踩踏
+concurrency:
+  group: release
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -24,8 +30,20 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
 
+      - name: 缓存 Cargo 依赖
+        uses: Swatinem/rust-cache@v2
+
+      - name: 代码风格检查
+        run: cargo fmt --check
+
+      - name: Clippy 静态检查
+        run: cargo clippy --release --locked -- -D warnings
+
+      - name: 单元测试
+        run: cargo test --release --locked
+
       - name: 编译发布版本
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: 裁剪二进制体积
         run: strip target/release/adguard-china-dns
@@ -33,7 +51,10 @@ jobs:
       - name: 生成规则文件
         run: |
           mkdir -p output
-          OUTPUT_FILE="output/adguard_home_rules.txt" ./target/release/adguard-china-dns
+          # 显式指定仓库内 config/ 目录（默认会取可执行文件同级目录，导致仓库配置被忽略）
+          CONFIG_DIR="$GITHUB_WORKSPACE/config" \
+          OUTPUT_FILE="output/adguard_home_rules.txt" \
+          ./target/release/adguard-china-dns
 
       - name: 获取发布时间
         id: timestamp
@@ -43,19 +64,7 @@ jobs:
           echo "datetime=${TS}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
-      - name: 清理历史 Release
-        run: |
-          echo "正在清理历史 Release ..."
-          gh release list --json tagName -q '.[].tagName' 2>/dev/null | while read tag; do
-            [ -z "$tag" ] && continue
-            echo "  删除: $tag"
-            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-          done
-          echo "清理完成"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 发布 Release
+      - name: 发布 Release（先建后删，保证 latest 下载链接不中断）
         run: |
           gh release create "${{ steps.timestamp.outputs.tag }}" \
             output/adguard_home_rules.txt \
@@ -73,5 +82,19 @@ jobs:
           ```
           BODY
           )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 清理历史 Release（保留最新）
+        run: |
+          NEW="${{ steps.timestamp.outputs.tag }}"
+          echo "正在清理历史 Release（保留 ${NEW}）..."
+          gh release list --json tagName -q '.[].tagName' | while read -r tag; do
+            [ -z "$tag" ] && continue
+            [ "$tag" = "$NEW" ] && continue
+            echo "  删除: $tag"
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          done
+          echo "清理完成"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,1 +1,3 @@
 adguard_home_rules.txt
+output/
+target/

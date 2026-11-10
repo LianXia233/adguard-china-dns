@@ -1,5 +1,8 @@
-https://sm2.doh.pub/dns-query
-tls://dot.pub
+# 国内高速上游 DNS（命中分流规则时使用）
+https://dns.alidns.com/dns-query
 https://doh.pub/dns-query
+tls://dot.pub
 https://doh.volcengine.com/dns-query
 tls://dot.volcengine.com
+# 国密 SM2 端点（标准 TLS 客户端亦可正常握手）
+https://sm2.doh.pub/dns-query
