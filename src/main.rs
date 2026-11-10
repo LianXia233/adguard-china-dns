@@ -26,9 +26,16 @@ const DOWNLOAD_TIMEOUT_SECS: u64 = 30;
 const MIN_DOWNLOAD_LINES: usize = 1000;
 
 /// 单条分流规则中合组的域名数量。
-/// AdGuard Home 支持 dnsmasq 风格的 [/d1/d2/.../]upstream 多域名合组语法，
+/// AdGuard Home 支持 dnsmasq 风格的 [/d1/d2/.../]<upstream> 多域名合组语法，
 /// 合组可避免每条规则重复携带整串上游列表，产物体积缩减约 85%。
 const DOMAINS_PER_GROUP: usize = 50;
+
+/// 在线源清洗后的最低域名数量。低于此值判定为源格式漂移或数据损坏，
+/// 直接失败退出，避免把近乎空白的规则发布出去（现网稳定在 11 万左右）。
+const MIN_KEPT_DOMAINS: usize = 50_000;
+
+/// 在线源丢弃率告警阈值（百分比）。超过则说明源格式可能已变更。
+const MAX_DROP_PERCENT: usize = 5;
 
 const DEFAULT_DNS_GLOBAL: &str = "\
 # 全局兜底安全 DNS（未命中分流规则时使用，支持 DoH / DoT / DoQ）
@@ -288,16 +295,27 @@ fn load_global(path: &Path) -> Vec<String> {
     lines
 }
 
-/// 逐行读取文件并清洗为域名，交由回调处理（去重由调用方负责）
-fn for_each_clean_domain<F: FnMut(String)>(path: &Path, mut on_domain: F) {
+/// 逐行读取文件并清洗为域名，交由回调处理（去重由调用方负责）。
+/// 返回 (有效原始行数, 清洗通过数)，用于统计丢弃率——丢弃必须由人看见，
+/// 否则上游源格式漂移时会静默生成近乎空白的规则文件。
+fn for_each_clean_domain<F: FnMut(String)>(path: &Path, mut on_domain: F) -> (usize, usize) {
     let Ok(file) = fs::File::open(path) else {
-        return;
+        return (0, 0);
     };
+    let mut total = 0usize;
+    let mut kept = 0usize;
     for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let raw = line.trim();
+        if raw.is_empty() || raw.starts_with('#') {
+            continue;
+        }
+        total += 1;
         if let Some(domain) = clean_domain_line(&line) {
+            kept += 1;
             on_domain(domain);
         }
     }
+    (total, kept)
 }
 
 fn compile_rules(
@@ -320,18 +338,38 @@ fn compile_rules(
     let mut seen: HashSet<String> = HashSet::new();
 
     let mut custom_domains: Vec<String> = Vec::new();
-    for_each_clean_domain(f_custom, |d| {
+    let (_custom_total, _custom_kept) = for_each_clean_domain(f_custom, |d| {
         if seen.insert(d.clone()) {
             custom_domains.push(d);
         }
     });
 
     let mut online_domains: Vec<String> = Vec::new();
-    for_each_clean_domain(dl_path, |d| {
+    let (online_total, online_kept) = for_each_clean_domain(dl_path, |d| {
         if seen.insert(d.clone()) {
             online_domains.push(d);
         }
     });
+
+    // 3.2.1 丢弃率与总量守卫：源格式一旦漂移（例如换成逗号规则格式），
+    // 清洗结果会塌陷到接近 0，而程序原本仍会报"编译成功"。
+    if online_total > 0 {
+        let dropped = online_total.saturating_sub(online_kept);
+        if dropped * 100 / online_total > MAX_DROP_PERCENT {
+            warn(&format!(
+                "在线源丢弃率偏高：{} / {} 行（{}%）未通过清洗，请确认规则源格式是否变更。",
+                dropped,
+                online_total,
+                dropped * 100 / online_total
+            ));
+        }
+    }
+    if online_kept < MIN_KEPT_DOMAINS {
+        die(&format!(
+            "在线源清洗后仅得到 {} 个域名（阈值 {}），判定为源损坏或格式漂移，拒绝生成规则。",
+            online_kept, MIN_KEPT_DOMAINS
+        ));
+    }
 
     let custom_count = custom_domains.len();
     let online_count = online_domains.len();
@@ -373,7 +411,9 @@ fn clean_domain_line(raw: &str) -> Option<String> {
     }
     for prefix in ["domain-suffix:", "domain:"] {
         if let Some(rest) = d.strip_prefix(prefix) {
-            d = rest;
+            // 前缀后可能还有空格（如 "domain: example.com"），必须重新 trim，
+            // 否则整行会被下面的校验静默丢弃。
+            d = rest.trim();
             break;
         }
     }
@@ -389,7 +429,11 @@ fn clean_domain_line(raw: &str) -> Option<String> {
 }
 
 /// 校验规范化域名：小写字母/数字/连字符，标签非空且不以连字符开头结尾，
-/// 总长 ≤253、单标签 ≤63（RFC 1035）。手写字符串校验，无正则引擎开销。
+/// 总长 ≤253、单标签 ≤63（RFC 1035），且末级标签不得全为数字。手写字符串校验，无正则引擎开销。
+///
+/// 末级标签全数字（如 `1.1.1.1`）在 AdGuard Home 侧会被
+/// `netutil.ValidateDomainName` 判为 "bad top-level domain name label"，
+/// 从而导致整个规则文件加载失败，因此这里必须提前拦掉。
 fn is_valid_domain(d: &str) -> bool {
     !d.is_empty()
         && d.len() <= 253
@@ -402,17 +446,66 @@ fn is_valid_domain(d: &str) -> bool {
                     .bytes()
                     .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
         })
+        && d.rsplit('.')
+            .next()
+            .is_some_and(|tld| !tld.bytes().all(|c| c.is_ascii_digit()))
 }
 
-/// 将单个合组渲染为 AdGuard Home 上游规则行：[/d1/d2/.../]upstreams
+/// 写出前自检：按 AdGuard Home（dnsproxy splitConfigLine）的语法重新解析每一条
+/// 生成的规则行。语法错误不会让单条规则失效，而是让整个 upstream_dns_file
+/// 加载失败、AdGuard Home 直接无法启动，因此必须在发布前拦住。
+fn validate_rule_lines(lines: &[String]) -> Result<(), String> {
+    for (i, line) in lines.iter().enumerate() {
+        // 空上游降级产生的注释行本就交给 AdGuard Home 忽略，无需校验
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("[/") else {
+            return Err(format!(
+                "第 {} 行未以 [/ 开头: {}",
+                i + 1,
+                line.chars().take(60).collect::<String>()
+            ));
+        };
+        let Some((domains, upstreams)) = rest.split_once("/]") else {
+            return Err(format!(
+                "第 {} 行缺少 /] 结尾: {}",
+                i + 1,
+                line.chars().take(60).collect::<String>()
+            ));
+        };
+        if upstreams.trim().is_empty() {
+            return Err(format!("第 {} 行没有上游地址", i + 1));
+        }
+        for (j, d) in domains.split('/').enumerate() {
+            if d.is_empty() {
+                // 空域名段在 AdGuard Home 中意为"仅无点裸主机名"，绝不能出现在产物里
+                return Err(format!("第 {} 行第 {} 个域名段为空", i + 1, j + 1));
+            }
+            if !is_valid_domain(d) {
+                return Err(format!("第 {} 行第 {} 个域名非法: {}", i + 1, j + 1, d));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 将单个合组渲染为 AdGuard Home 上游规则行：[/d1/d2/.../]<upstreams>
+///
+/// 语法由 dnsproxy `splitConfigLine` 定义：整行必须以 `[/` 开头，域名段以 `/`
+/// 分隔并以 `/]` 收尾，其后紧跟空格分隔的上游列表。
+/// 注意结尾是 `/]` 而非 `]/`——写成 `]/` 会让 AdGuard Home 以
+/// "wrong upstream format" 直接启动失败（见 AdGuard Home 配置文档）。
 fn render_spec(group: &[String], upstreams: &str) -> String {
-    let mut line = String::with_capacity(2 + group.len() * 24 + upstreams.len());
-    line.push('[');
-    for d in group {
-        line.push('/');
+    let mut line = String::with_capacity(4 + group.len() * 24 + upstreams.len());
+    line.push_str("[/");
+    for (i, d) in group.iter().enumerate() {
+        if i > 0 {
+            line.push('/');
+        }
         line.push_str(d);
     }
-    line.push_str("]/");
+    line.push_str("/]");
     line.push_str(upstreams);
     line
 }
@@ -611,6 +704,13 @@ fn main() {
     // Step 4: 编译规则
     let result = compile_rules(&f_global, &f_upstream, &f_custom, &dl_path);
 
+    // Step 4.5: 语法自检——有问题的产物会让 AdGuard Home 起不来，宁可不发
+    if let Err(e) = validate_rule_lines(&result.custom_lines)
+        .and_then(|_| validate_rule_lines(&result.online_lines))
+    {
+        die(&format!("生成的规则语法自检失败：{e}"));
+    }
+
     // Step 5: 写入输出（同目录临时文件 + 原子 rename）
     write_output(&result, &args.output);
 
@@ -712,11 +812,59 @@ mod tests {
 
         let lines = build_rule_lines(&domains, ups, true);
         assert_eq!(lines.len(), 3); // 50 + 50 + 20
+                                    // AdGuard Home 语法：[/d1/d2/.../]<upstreams>，闭合斜杠在 ] 之前
         assert!(lines[0].starts_with("[/d0.example.com/d1.example.com/"));
-        assert!(lines[0].ends_with("]/https://doh.pub/dns-query"));
+        assert!(lines[0].ends_with("/d49.example.com/]https://doh.pub/dns-query"));
+        assert!(!lines[0].contains("]/"), "合组行不得写成 ]/ 形式");
 
         let single = build_rule_lines(&domains[..1].to_vec(), ups, false);
         assert_eq!(single[0], "[/d0.example.com/]https://doh.pub/dns-query");
+
+        // 产物必须能被 AdGuard Home 的语法解析，否则整机起不来
+        validate_rule_lines(&lines).expect("grouped lines must be valid");
+        validate_rule_lines(&single).expect("single lines must be valid");
+    }
+
+    #[test]
+    fn validator_rejects_wrong_closing_bracket() {
+        // 这是本项目此前实际生成的错误形式
+        let bad = vec!["[/a.com/b.com]/1.1.1.1".to_string()];
+        assert!(validate_rule_lines(&bad).is_err());
+
+        let empty_seg = vec!["[/a.com//b.com/]1.1.1.1".to_string()];
+        assert!(validate_rule_lines(&empty_seg).is_err());
+
+        let no_ups = vec!["[/a.com/]".to_string()];
+        assert!(validate_rule_lines(&no_ups).is_err());
+
+        let numeric_tld = vec!["[/1.1.1.1/]1.1.1.1".to_string()];
+        assert!(validate_rule_lines(&numeric_tld).is_err());
+
+        let good = vec!["[/a.com/]1.1.1.1".to_string()];
+        assert!(validate_rule_lines(&good).is_ok());
+
+        // 注释行（空上游降级）直接跳过
+        let commented = vec!["# [未配置上游DNS] /a.com/".to_string()];
+        assert!(validate_rule_lines(&commented).is_ok());
+    }
+
+    #[test]
+    fn prefix_with_space_is_not_dropped() {
+        assert_eq!(
+            clean_domain_line("domain: example.com"),
+            Some("example.com".into())
+        );
+        let spaced = clean_domain_line("domain-suffix:  .Example.COM ");
+        assert_eq!(spaced, Some("example.com".into()));
+    }
+
+    #[test]
+    fn ip_like_entry_rejected() {
+        // 末级标签全数字会被 AdGuard Home 判为非法域名，必须在生成前拦掉
+        assert_eq!(clean_domain_line("1.1.1.1"), None);
+        assert_eq!(clean_domain_line("domain:223.5.5.5"), None);
+        // 数字开头但末级为字母的真实域名照常保留
+        assert_eq!(clean_domain_line("000114.com"), Some("000114.com".into()));
     }
 
     #[test]

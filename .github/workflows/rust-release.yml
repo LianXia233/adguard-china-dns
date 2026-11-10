@@ -56,6 +56,26 @@ jobs:
           OUTPUT_FILE="output/adguard_home_rules.txt" \
           ./target/release/adguard-china-dns
 
+      # 语法门禁：AdGuard Home 的 upstream_dns_file 只要有一行不合 dnsproxy 语法，
+      # 启动就直接 fatal、DNS 全停。产物必须在发布前本地校验，避免把砖头发到 latest。
+      - name: 产物语法校验（发布门禁）
+        run: python3 tools/validate_upstream_dns_file.py output/adguard_home_rules.txt
+
+      - name: 产物规模校验（防止上游格式漂移导致静默塌陷）
+        run: |
+          # 合组写法每行 50 个域名，域名总数应在 10 万量级；跌破阈值说明在线源改版或下载被截断
+          N=$(python3 -c 'import re,sys
+          t=0
+          for l in open("output/adguard_home_rules.txt",encoding="utf-8"):
+              m=re.match(r"^\[/([^]]*)/\]",l)
+              if m: t+=m.group(1).count("/")+1
+          print(t)')
+          echo "产物域名条目数：${N}"
+          if [ "${N}" -lt 50000 ]; then
+            echo "::error::域名条目数 ${N} < 50000，疑似在线源格式漂移或下载不完整，终止发布"
+            exit 1
+          fi
+
       - name: 获取发布时间
         id: timestamp
         run: |
@@ -85,16 +105,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 清理历史 Release（保留最新）
+      - name: 清理历史 Release（保留最近 5 个）
         run: |
-          NEW="${{ steps.timestamp.outputs.tag }}"
-          echo "正在清理历史 Release（保留 ${NEW}）..."
-          gh release list --json tagName -q '.[].tagName' | while read -r tag; do
-            [ -z "$tag" ] && continue
-            [ "$tag" = "$NEW" ] && continue
-            echo "  删除: $tag"
-            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-          done
+          # 只保留最近 KEEP 个：一旦新产物语法有问题，用户可立即回退到上一版而不是无版可退
+          KEEP=5
+          echo "保留最近 ${KEEP} 个 Release..."
+          gh release list --json tagName -q '.[].tagName' \
+            | grep -E '^v-[0-9]{8}-[0-9]{4}$' | sort -r \
+            | tail -n +$((KEEP + 1)) | while read -r tag; do
+              [ -z "$tag" ] && continue
+              echo "  删除: $tag"
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+            done
           echo "清理完成"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
