@@ -298,17 +298,9 @@ https://sm2.doh.pub/dns-query
 ```
 
 ### 3. 本地与自定义直连域名 (`config/domain_custom.txt`)
-最高优先级规则，强制经由国内上游直连解析。适合添加局域网设备、路由器后台或私有域名：
+最高优先级规则，强制经由国内上游直连解析。默认模板仅包含以下个人直连域名：
 
 ```text
-# 局域网与路由器面板
-router.asus.com
-miwifi.com
-
-# 本地私有服务与 NAS
-my-nas.local
-home.lan
-
 # 个人直连域名
 xoyo.com
 calatopia.com
@@ -318,8 +310,19 @@ wegame.com.cn
 ugreengroup.com
 wanmei.com
 
-# 在此按需添加你的直连域名，每行一个
-# example.com
+# 在此按需添加你的直连域名（路由器面板、NAS、内网服务等，写法示例见下方），每行一个
+```
+
+**追加写法示例**（按需自行添加，不随模板内置）：
+
+```text
+# 局域网与路由器面板
+router.asus.com
+miwifi.com
+
+# 本地私有服务与 NAS
+my-nas.local
+home.lan
 ```
 
 **配置语法与语义说明**：

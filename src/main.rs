@@ -54,14 +54,6 @@ https://sm2.doh.pub/dns-query
 ";
 
 const DEFAULT_DOMAIN_CUSTOM: &str = "\
-# 局域网与路由器面板
-router.asus.com
-miwifi.com
-
-# 本地私有服务与 NAS
-my-nas.local
-home.lan
-
 # 个人直连域名
 xoyo.com
 calatopia.com
@@ -71,8 +63,7 @@ wegame.com.cn
 ugreengroup.com
 wanmei.com
 
-# 在此按需添加你的直连域名，每行一个
-# example.com
+# 在此按需添加你的直连域名（路由器面板、NAS、内网服务等，写法示例见 README），每行一个
 ";
 
 // =============================================================================
