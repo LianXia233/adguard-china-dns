@@ -26,7 +26,7 @@ const DEFAULT_DNS_GLOBAL: &str = "\
 # 裸上游行即默认上游，缺失会让 AdGuard Home 报 no default upstreams 并启动失败。
 
 # Cloudflare 1.1.1.1 官方 DoT：IP 直连免 Bootstrap，TLS 证书含 1.1.1.1 SAN
-# 实测（中国大陆/北京腾讯云出口）：可用，A/AAAA 正常返回
+# 三轮实测（中国大陆/北京腾讯云出口）：853 可用、A/AAAA 正常返回；443 的 DoH 不通
 tls://1.1.1.1
 
 # 以下为官方端点示例，请按你所在网络的实测结果决定是否启用。
@@ -37,46 +37,72 @@ tls://1.1.1.1
 # https://doh.opendns.com/dns-query             # Cisco OpenDNS 官方 DoH
 # https://cloudflare-dns.com/dns-query          # Cloudflare 官方 DoH（与 tls://1.1.1.1 同服务）
 # 9.9.9.9                                      # Quad9 明文 UDP（跨境明文可能被劫持）
-# https://unfiltered.adguard-dns.com/dns-query   # AdGuard DNS 无过滤（dns.adguard-dns.com 是过滤版）
-# https://doh.opendns.com/dns-query              # Cisco OpenDNS 官方 DoH
-# https://cloudflare-dns.com/dns-query           # Cloudflare 官方 DoH（与 tls://1.1.1.1 同服务）
-# 9.9.9.9                                       # Quad9 明文 UDP（跨境明文可能被劫持）
 ";
 
 const DEFAULT_DNS_UPSTREAM: &str = "\
 # 国内高速上游 DNS（命中分流规则时使用）
-# 全部为服务商官方公开端点；同一服务商的多协议入口不算独立故障域。
-# 火山引擎公共解析 PublicDNS 官方明确仅提供 UDP/TCP 明文，未提供 DoH/DoT/DoQ。
+# 策略：全部使用加密 DNS（DoH / DoT），不启用任何明文 UDP 上游。
+# 全部为服务商官方公开端点；同一服务商的多协议 / 多 IP 入口属于同一故障域，
+# 仅作接入级冗余，不构成独立服务商节点。
+# 端点经三轮 A/AAAA 实测筛选；火山引擎 PublicDNS 仅支持明文，不符合本策略。
 
-# 阿里云公共 DNS（官方 DoH）
+# --- 阿里云公共 DNS（官方 DoH / DoT；域名形式需 Bootstrap） ---
 https://dns.alidns.com/dns-query
+# 阿里云 IP 版 DoH：免 Bootstrap，同一服务，仅作接入冗余
+https://223.5.5.5/dns-query
+https://223.6.6.6/dns-query
+tls://dns.alidns.com
 
-# DNSPod 公共 DNS（官方 DoH / DoT；同一服务，仅作协议级冗余）
+# --- 腾讯云 DNSPod（官方 DoH / DoT；同一服务） ---
 https://doh.pub/dns-query
 tls://dot.pub
 
-# 360 安全 DNS（官方 DoH）
+# --- 360 安全 DNS（官方 DoH / DoT；同一服务） ---
 https://doh.360.cn/dns-query
-
-# 火山引擎公共解析 PublicDNS（官方明文 UDP）
-180.184.1.1
-
-# 明文 UDP 兜底：免 Bootstrap，CDN 调度贴近运营商出口
-223.5.5.5
+https://120.53.53.53/dns-query
+tls://dot.360.cn
 ";
 
 const DEFAULT_DOMAIN_CUSTOM: &str = "\
 # 个人直连域名（每行一个；语义说明见 README）
-# 不带点 = 精确匹配，带前导点 = 后缀匹配（含域名本身及全部子域）
-xoyo.com
-calatopia.com
-kurogames.com
-wegame.com.cn
-3gppnetwork.org
-ugreengroup.com
-wanmei.com
+# 本项目采用「后缀匹配优先」策略：带前导点 = 后缀匹配（含域名本身及全部子域）。
+# 不带点 = 精确匹配，按默认 --exact-match-policy=expand 统一扩大为后缀匹配。
+# 为避免语义歧义，以下域名全部显式写成后缀匹配。
 
-# 在此按需添加你的直连域名，每行一个
+# --- 原有直连域名（统一改为后缀匹配） ---
+.xoyo.com
+.calatopia.com
+.wegame.com.cn
+.3gppnetwork.org
+.ugreengroup.com
+
+# --- 游戏相关域名（官方域名核实，后缀匹配优先） ---
+# 完美世界 / 异环（国服 yh.wanmei.com；国际服 nte.perfectworld.com）
+.wanmei.com
+.perfectworld.com
+# 原神（米哈游 / HoYoverse；国服 ys.mihoyo.com、dispatch 走 yuanshen.com）
+.mihoyo.com
+.hoyoverse.com
+.yuanshen.com
+# 深空之眼（勇仕网络；国服 skzy.ys4fun.com、国际服 aethergazer.com）
+.ys4fun.com
+.aethergazer.com
+# 少女前线2：追放（散爆 / 暗冬网络；gf2.sunborngame.com）
+.sunborngame.com
+# 库洛游戏 / 鸣潮（mc.kurogames.com、wutheringwaves.kurogames.com）
+.kurogames.com
+# 明日方舟：终末地（鹰角网络；endfield.hypergryph.com、森空岛 skland.com）
+.hypergryph.com
+.skland.com
+# 蓝色星原：旅谣（蛮啾网络；azurpromilia.manjuu.com）
+.manjuu.com
+# 白银之城（乐元素 / Elementa Games；www.silverpalace.cn、silverpalace.elementagames.com）
+.silverpalace.cn
+.elementagames.com
+# 无限大（网易雷火 Naked Rain；只收 ananta 子域，不放大到整个 163.com）
+.ananta.163.com
+
+# 在此按需添加你的直连域名，每行一个；建议统一写成带前导点的后缀匹配
 ";
 
 const MIN_KEPT_DOMAINS: usize = 50_000;
@@ -97,8 +123,9 @@ const HELP_TEXT: &str = "\
   -c, --config-dir <目录>         配置文件目录
                                    (默认: CONFIG_DIR 环境变量，或可执行文件同级 config/)
       --rules-file <路径>         使用本地规则文件代替在线下载（用于离线复现/测试）
-      --exact-match-policy <策略>  精确匹配规则处理策略: expand(默认) | skip
-                                   expand = 扩大为后缀匹配并强制告警；skip = 跳过并统计
+      --exact-match-policy <策略>  精确匹配规则处理策略: expand(默认，后缀匹配优先) | skip
+                                   expand = 统一转为后缀匹配（扩大覆盖面，已显式统计与说明）
+                                   skip   = 跳过精确匹配规则并统计
       --min-domains <数量>        在线源清洗后最低域名数守卫（默认 50000）
       --report-json <路径>        额外输出结构化统计 JSON
   -V, --version                   显示版本号
@@ -437,13 +464,13 @@ fn build_output_lines(result: &CompileResult, args: &Args) -> Vec<String> {
         + result.custom_stats.expanded_exact
         + result.custom_stats.skipped_exact;
     lines.push(format!(
-        "# ⚠️ 精确匹配规则共 {} 条（在线 {} + 自定义 {}），策略=({})：{}",
+        "# 精确匹配规则共 {} 条（在线 {} + 自定义 {}），策略=({})，后缀匹配优先：{}",
         exact_total,
         result.stats.expanded_exact + result.stats.skipped_exact,
         result.custom_stats.expanded_exact + result.custom_stats.skipped_exact,
         args.exact_policy.label(),
         if args.exact_policy == ExactPolicy::Expand {
-            "已【扩大】为后缀匹配（会额外匹配其子域名），非无损转换"
+            "已统一转为后缀匹配（额外覆盖子域名，非无损转换，已如实记录）"
         } else {
             "已跳过，未写入产物"
         }
@@ -527,14 +554,14 @@ fn print_report(result: &CompileResult, output_path: &Path, args: &Args) {
         + result.custom_stats.expanded_exact
         + result.custom_stats.skipped_exact;
     if exact_total > 0 {
-        warn(&format!(
+        log(&format!(
             "源规则中 {} 条为【精确匹配】（Surge DOMAIN-SET 不带点写法）。\
-             AdGuard Home 的 upstream_dns_file 没有精确匹配语法，策略 {}：{}。\
-             这不是静默丢弃，也不是无损转换，详见产物头部注释、README 与审计报告。",
+             AdGuard Home 的 upstream_dns_file 没有精确匹配语法，项目采用「后缀匹配优先」策略 {}：{}。\
+             转换已显式统计并记录在产物头部、README 与审计报告，非静默丢弃、非无损转换。",
             exact_total,
             args.exact_policy.label(),
             if args.exact_policy == ExactPolicy::Expand {
-                "已扩大为后缀匹配（额外覆盖子域名）"
+                "已统一转为后缀匹配（额外覆盖子域名）"
             } else {
                 "已跳过"
             }
@@ -548,7 +575,7 @@ fn print_report(result: &CompileResult, output_path: &Path, args: &Args) {
             .iter()
             .take(5)
         {
-            warn(&format!("   精确匹配样本: {s}"));
+            log(&format!("   精确匹配样本: {s}"));
         }
     }
     for kind in ["keyword", "unsupported", "invalid"] {
@@ -698,7 +725,7 @@ mod tests {
         );
         write(
             &cfg.join("dns_upstream.txt"),
-            "https://doh.pub/dns-query\ntls://dot.pub\n223.5.5.5\n",
+            "https://doh.pub/dns-query\ntls://dot.pub\nhttps://223.5.5.5/dns-query\n",
         );
         write(
             &cfg.join("domain_custom.txt"),

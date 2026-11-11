@@ -1,31 +1,55 @@
 # DNS 上游连通性实测清单（供 tools/test_upstreams.py 使用）
-# 用法：python3 tools/test_upstreams.py tools/endpoints.txt
+# 用法：TEST_OUTPUT=output/x.json python3 tools/test_upstreams.py tools/endpoints.txt
 # 结果仅代表当前运行环境；DoQ 只做 UDP/853 可达性探测，QUIC 握手标记为未验证。
+# 2026-11-11 三轮实测（www.baidu.com / www.qq.com / github.com）：
+#   29 个端点 3/3 全通；5 个端点两轮持续失败，见末尾「已知失效」段。
+# 原始数据：output/dns_round1.json / dns_round2.json / dns_round3.json / dns_fail_retry.json
 
-# --- 当前配置启用的国内上游 ---
+# === 当前配置启用：国内加密上游（9 条，全部 DoH / DoT） ===
 https://dns.alidns.com/dns-query
+https://223.5.5.5/dns-query
+https://223.6.6.6/dns-query
+tls://dns.alidns.com
 https://doh.pub/dns-query
 tls://dot.pub
 https://doh.360.cn/dns-query
-180.184.1.1
-223.5.5.5
+https://120.53.53.53/dns-query
+tls://dot.360.cn
 
-# --- 当前配置启用的默认（全球）上游 ---
+# === 当前配置启用：默认（全球）上游 ===
 tls://1.1.1.1
 
-# --- 官方候选端点：按你的网络实测结果决定是否启用 ---
-https://dns.google/dns-query
-https://unfiltered.adguard-dns.com/dns-query
-https://doh.opendns.com/dns-query
-https://cloudflare-dns.com/dns-query
-tls://dns.alidns.com
-tls://dot.360.cn
+# === 官方候选端点：三轮实测通过，按网络环境决定是否启用 ===
+https://1.12.12.12/dns-query
+https://sm2.doh.pub/dns-query
+tls://dot-pure.onedns.net
+
+# === Bootstrap 候选：明文 UDP，三轮 3/3 全通（前 8 个已写入配置示例） ===
+223.5.5.5
 119.29.29.29
 114.114.114.114
+180.76.76.76
+1.2.4.8
+123.125.81.6
+1.1.1.1
 9.9.9.9
+# 其余可用明文 UDP（备用，未纳入 Bootstrap）
+223.6.6.6
+119.28.28.28
+210.2.4.8
+114.114.115.115
+180.184.1.1
+101.226.4.6
+8.8.8.8
+208.67.222.222
 
-# --- 已知失效/错误端点（如需回归对照可自行取消注释） ---
-# https://doh.volcengine.com/dns-query   # 火山引擎 PublicDNS 官方不提供 DoH
+# === 已知失效 / 不匹配端点（如需回归对照可自行取消注释） ===
+# https://doh-pure.onedns.net/dns-query   # 两轮 DoH 均失败；其 DoT 端点可用
+# https://101.6.6.6:8443/dns-query        # 教育网 TUNA DoH，非教育网出口超时
+# https://1.1.1.1/dns-query               # 本环境 443 不通；853 的 DoT 可用
+# 1.12.12.12                             # 明文 UDP 不通，仅 IP 版 DoH 可用
+# 120.53.53.53                           # 明文 UDP 不通，仅 IP 版 DoH 可用
+# https://doh.volcengine.com/dns-query    # 火山引擎 PublicDNS 官方不提供 DoH
 # tls://dot.volcengine.com               # 域名不存在
 # https://208.67.222.222/dns-query       # IP 直连 DoH，TLS 端点不匹配
 # https://101.101.101.101/dns-query      # 非全球公共 DNS 官方 DoH 端点

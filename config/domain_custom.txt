@@ -1,11 +1,39 @@
 # 个人直连域名（每行一个；语义说明见 README）
-# 不带点 = 精确匹配，带前导点 = 后缀匹配（含域名本身及全部子域）
-xoyo.com
-calatopia.com
-kurogames.com
-wegame.com.cn
-3gppnetwork.org
-ugreengroup.com
-wanmei.com
+# 本项目采用「后缀匹配优先」策略：带前导点 = 后缀匹配（含域名本身及全部子域）。
+# 不带点 = 精确匹配，按默认 --exact-match-policy=expand 统一扩大为后缀匹配。
+# 为避免语义歧义，以下域名全部显式写成后缀匹配。
 
-# 在此按需添加你的直连域名，每行一个
+# --- 原有直连域名（统一改为后缀匹配） ---
+.xoyo.com
+.calatopia.com
+.wegame.com.cn
+.3gppnetwork.org
+.ugreengroup.com
+
+# --- 游戏相关域名（官方域名核实，后缀匹配优先） ---
+# 完美世界 / 异环（国服 yh.wanmei.com；国际服 nte.perfectworld.com）
+.wanmei.com
+.perfectworld.com
+# 原神（米哈游 / HoYoverse；国服 ys.mihoyo.com、dispatch 走 yuanshen.com）
+.mihoyo.com
+.hoyoverse.com
+.yuanshen.com
+# 深空之眼（勇仕网络；国服 skzy.ys4fun.com、国际服 aethergazer.com）
+.ys4fun.com
+.aethergazer.com
+# 少女前线2：追放（散爆 / 暗冬网络；gf2.sunborngame.com）
+.sunborngame.com
+# 库洛游戏 / 鸣潮（mc.kurogames.com、wutheringwaves.kurogames.com）
+.kurogames.com
+# 明日方舟：终末地（鹰角网络；endfield.hypergryph.com、森空岛 skland.com）
+.hypergryph.com
+.skland.com
+# 蓝色星原：旅谣（蛮啾网络；azurpromilia.manjuu.com）
+.manjuu.com
+# 白银之城（乐元素 / Elementa Games；www.silverpalace.cn、silverpalace.elementagames.com）
+.silverpalace.cn
+.elementagames.com
+# 无限大（网易雷火 Naked Rain；只收 ananta 子域，不放大到整个 163.com）
+.ananta.163.com
+
+# 在此按需添加你的直连域名，每行一个；建议统一写成带前导点的后缀匹配

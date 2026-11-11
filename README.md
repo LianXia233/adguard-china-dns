@@ -81,7 +81,7 @@ flowchart TD
 ## ✨ 核心特性
 
 - **稳定可复现**：域名用 `BTreeSet` 字典序排序后分组合块，产物不受 `HashSet` 随机迭代顺序影响；同一份输入两次编译的规则部分逐字节一致。
-- **规则语义可审计**：区分 Surge DOMAIN-SET 的「精确匹配」与「后缀匹配」，对无法无损转换的精确匹配规则**强制输出数量、样本与告警**（见 [规则语义](#semantics)）。
+- **规则语义可审计**：区分 Surge DOMAIN-SET 的「精确匹配」与「后缀匹配」，对无法无损转换的精确匹配规则采用**后缀匹配优先**策略统一转为后缀匹配，并显式输出数量、策略与样本（见 [规则语义](#semantics)）。
 - **全量数据统计**：原始行数、有效记录、解析/转换数、唯一域名、重复、无效、不支持、丢弃、父子域去重、Punycode 数均写入产物头部注释与 `--report-json`。
 - **严格下载校验**：状态码 → Content-Type → 压缩/二进制魔数 → UTF-8 → HTML 错误页 → 行数 → 域名行占比，任一失败换源；彻底失败不写产物。
 - **上游 URI 严格校验**：协议白名单、主机/IPv6/端口、DoH 路径；只规范化 scheme 与主机名，**保留 URL 路径与 DNS Stamp 的大小写**。
@@ -125,7 +125,7 @@ sudo cp target/release/adguard-china-dns /usr/local/bin/
 | `-o, --output <路径>` | 输出规则文件（默认 `OUTPUT_FILE` 环境变量，或系统临时目录） |
 | `-c, --config-dir <目录>` | 配置文件目录（默认 `CONFIG_DIR` 环境变量，或可执行文件同级 `config/`） |
 | `--rules-file <路径>` | 使用本地规则文件代替在线下载，便于离线复现与测试 |
-| `--exact-match-policy <expand\|skip>` | 精确匹配规则策略，默认 `expand`（扩大为后缀匹配并告警）；`skip` 为跳过并统计 |
+| `--exact-match-policy <expand\|skip>` | 精确匹配规则策略，默认 `expand`（后缀匹配优先，统一转为后缀匹配并显式记录）；`skip` 为跳过并统计 |
 | `--min-domains <数量>` | 清洗后最低域名数守卫，默认 50000，测试时可设 0 |
 | `--report-json <路径>` | 额外输出结构化统计 JSON |
 | `-V` / `-h` | 版本 / 帮助 |
@@ -153,11 +153,19 @@ dns:
   upstream_dns_file: /opt/adguardhome/conf/adguard_home_rules.txt
 
   # 域名形式的 DoH/DoT 上游需要 Bootstrap 解析其主机名
+  # 8 个 Bootstrap 均经三轮 A/AAAA 实测可用，按服务商分散故障域：
+  # 223.5.5.5 阿里 / 119.29.29.29 DNSPod / 114.114.114.114 114DNS /
+  # 180.76.76.76 百度 / 1.2.4.8 CNNIC / 123.125.81.6 联通 /
+  # 1.1.1.1 Cloudflare（兜底）/ 9.9.9.9 Quad9（兜底）
   bootstrap_dns:
     - 223.5.5.5
     - 119.29.29.29
+    - 114.114.114.114
+    - 180.76.76.76
+    - 1.2.4.8
+    - 123.125.81.6
     - 1.1.1.1
-    - 8.8.8.8
+    - 9.9.9.9
 
   # 可选：load_balance（默认）/ parallel / fastest_addr，见下方说明
   upstream_mode: load_balance
@@ -195,19 +203,19 @@ sudo systemctl restart AdGuardHome   # 或 docker restart adguardhome
 
 | 源规则类型 | 数量 | 源语义 | AdGuard Home 目标语义 | 转换结论 |
 | :--- | ---: | :--- | :--- | :--- |
-| `.example.com`（前导点） | 109,629 | 域名本身 + 全部子域 | `[/example.com/]` = 域名本身 + 全部子域 | ✅ **无损转换** |
-| `example.com`（不带点） | 559 | **精确匹配该主机名** | `[/example.com/]` = 域名本身 + 全部子域 | ⚠️ **只能扩大匹配范围** |
-| `*.example.com` | 0（本源无） | 仅子域 | `[/*.example.com/]` | ✅ 可无损表达 |
-| `DOMAIN-KEYWORD` / `IP-CIDR` 等 | 0（本源无） | 关键字 / IP 段 | 上游文件无对应语义 | ⛔ 不支持，跳过并统计 |
+| `.example.com`（前导点） | 109,629 | 域名本身 + 全部子域 | `[/example.com/]` = 域名本身 + 全部子域 | **无损转换** |
+| `example.com`（不带点） | 559 | **精确匹配该主机名** | `[/example.com/]` = 域名本身 + 全部子域 | **后缀匹配优先**：统一扩大为后缀匹配 |
+| `*.example.com` | 0（本源无） | 仅子域 | `[/*.example.com/]` | 可无损表达 |
+| `DOMAIN-KEYWORD` / `IP-CIDR` 等 | 0（本源无） | 关键字 / IP 段 | 上游文件无对应语义 | 不支持，跳过并统计 |
 
-> [!WARNING]
-> **AdGuard Home 的 `upstream_dns_file` 没有「精确匹配」语法**。因此 559 条精确匹配规则（在线）+ 自定义文件中的精确匹配写法，默认 `--exact-match-policy expand` 会**扩大为后缀匹配**，额外覆盖其子域名。
+> [!IMPORTANT]
+> **项目策略：后缀匹配优先。** AdGuard Home 的 `upstream_dns_file` 没有「精确匹配」语法，因此 559 条精确匹配规则（在线）+ 自定义文件中的精确匹配写法，默认 `--exact-match-policy expand` 统一**转为后缀匹配**，额外覆盖其子域名。这是主动选择的覆盖面优先策略，不是无损转换，也不是静默丢弃：编译器会在 stdout、产物头部注释和 `--report-json` 中输出数量、策略与代表性样本（如 `2mdn.net`、`a1.mzstatic.com`、`www.gstatic.com`）。
 >
-> 这不是无损转换，也不是静默丢弃：编译器会在 stdout、产物头部注释和 `--report-json` 中输出数量、策略与代表性样本（如 `2mdn.net`、`a1.mzstatic.com`、`www.gstatic.com`）。
+> `config/domain_custom.txt` 中所有域名已显式写成带前导点的后缀匹配形式，从源头消除语义歧义。
 >
 > 若你要求严格语义，可用 `--exact-match-policy skip` 跳过这些规则（同样会输出数量与样本）。注意**不能**用 `[/exact.com/]国内上游` + `[/*.exact.com/]#` 来模拟精确匹配：后者会把子域强制切回默认上游，从而覆盖父域的分流规则，反而改变语义。
 >
-> 其它无法表达的规则：`DOMAIN-KEYWORD`（子串匹配）、`DOMAIN-WILDCARD`（任意位置通配）、`IP-CIDR`/`GEOIP`。这些在 AdGuard Home 上游文件中没有等价物，应由过滤规则或路由层实现，本项目不会静默丢弃，而是分类统计并告警。
+> 其它无法表达的规则：`DOMAIN-KEYWORD`（子串匹配）、`DOMAIN-WILDCARD`（任意位置通配）、`IP-CIDR`/`GEOIP`。这些在 AdGuard Home 上游文件中没有等价物，应由过滤规则或路由层实现，本项目不会静默丢弃，而是分类统计并说明。
 
 ### 其它标准化行为
 
@@ -215,7 +223,7 @@ sudo systemctl restart AdGuardHome   # 或 docker restart adguardhome
 - 校验对齐 golibs：总长 ≤253、单 label ≤63、label 非空且首尾不得为 `-`、TLD 不得全为数字（拦掉 `1.1.1.1` 这类 IP 字面量）；额外拒绝下划线、空格等无意义字符；
 - 重复域名去重；**被父域名规则覆盖的子域名会去掉**（所有域名指向同一组上游，分流语义不变，实测去掉 165 条）；
 - 支持 `DOMAIN,` / `DOMAIN-SUFFIX,` / `DOMAIN-KEYWORD,` 与 `domain:` / `domain-suffix:` / `domain-keyword:` 前缀，冒号/逗号后带空格亦能正确解析；
-- 自定义域名文件同样按上述语义解释：**不带点 = 精确匹配，带前导点 = 后缀匹配**。若要让某个域名及其子域都走国内 DNS，请写成 `.example.com`。
+- 自定义域名文件同样按上述语义解释：**不带点 = 精确匹配（按默认策略扩大为后缀匹配），带前导点 = 后缀匹配**。项目默认配置文件已全部写成后缀匹配；若要让某个域名及其子域都走国内 DNS，请写成 `.example.com`。
 
 ---
 
@@ -246,46 +254,89 @@ tls://1.1.1.1
 
 ### 2. 国内加速 DNS (`config/dns_upstream.txt`)
 
-```text
-# 阿里云公共 DNS（官方 DoH）
-https://dns.alidns.com/dns-query
+**策略：全部使用加密 DNS（DoH / DoT），不启用任何明文 UDP 上游。** 9 条端点分属 3 家服务商，均经 2026-11-11 三轮 A/AAAA 实测（`rcode=0`、无超时、TLS 证书验证通过）。
 
-# DNSPod 公共 DNS（官方 DoH / DoT；同一服务，仅作协议级冗余）
+```text
+# --- 阿里云公共 DNS（官方 DoH / DoT；域名形式需 Bootstrap） ---
+https://dns.alidns.com/dns-query
+# 阿里云 IP 版 DoH：免 Bootstrap，同一服务，仅作接入冗余
+https://223.5.5.5/dns-query
+https://223.6.6.6/dns-query
+tls://dns.alidns.com
+
+# --- 腾讯云 DNSPod（官方 DoH / DoT；同一服务） ---
 https://doh.pub/dns-query
 tls://dot.pub
 
-# 360 安全 DNS（官方 DoH）
+# --- 360 安全 DNS（官方 DoH / DoT；同一服务） ---
 https://doh.360.cn/dns-query
-
-# 火山引擎公共解析 PublicDNS（官方明文 UDP）
-180.184.1.1
-
-# 明文 UDP 兜底：免 Bootstrap，CDN 调度贴近运营商出口
-223.5.5.5
+https://120.53.53.53/dns-query
+tls://dot.360.cn
 ```
 
-已核实的修正：
+| 服务商 | 端点 | 协议 | 平均 A RTT | 备注 |
+| :--- | :--- | :--- | ---: | :--- |
+| 阿里云 | `dns.alidns.com/dns-query` | DoH | 36 ms | 域名形式需 Bootstrap |
+| 阿里云 | `223.5.5.5/dns-query` | IP 版 DoH | 33 ms | 免 Bootstrap |
+| 阿里云 | `223.6.6.6/dns-query` | IP 版 DoH | 32 ms | 免 Bootstrap |
+| 阿里云 | `dns.alidns.com` | DoT | 67 ms | 协议级冗余 |
+| DNSPod | `doh.pub/dns-query` | DoH | 133 ms | 域名形式需 Bootstrap |
+| DNSPod | `dot.pub` | DoT | 159 ms | 同一服务 |
+| 360 | `doh.360.cn/dns-query` | DoH | 106 ms | 域名形式需 Bootstrap |
+| 360 | `120.53.53.53/dns-query` | IP 版 DoH | 53 ms | 免 Bootstrap |
+| 360 | `dot.360.cn` | DoT | 174 ms | 同一服务 |
 
-- 火山引擎 [官方 FAQ](https://volcengine.com/docs/TrafficRouteDNSSuite/FAQs-2?lang=zh) 明确「公共解析 PublicDNS **尚未支持** DoH / DoT / DoQ」，仅提供 UDP/TCP 明文；旧配置里的 `https://doh.volcengine.com/dns-query` 与 `tls://dot.volcengine.com` 并非官方 PublicDNS 端点（实测后者域名解析失败），已移除，改用官方明文地址 `180.184.1.1`；
-- 移除 `https://sm2.doh.pub/dns-query`（国密 SM2 端点，与 `doh.pub` 属同一服务，不构成独立故障域）；
-- 移除 `https://208.67.222.222/dns-query`、`https://101.101.101.101/dns-query`（IP 直连 DoH、TLS 证书/端点不匹配，且实测 443 不可达）；
-- 移除 `tls://1.0.0.1`（与 `tls://1.1.1.1` 同一 Cloudflare 服务，且实测超时）；
-- 新增 360 官方 DoH 与一条明文兜底，兼顾不同服务商冗余与 CDN 调度准确性。
+变更说明：
 
-> 同一服务商的 DoH / DoT / DoQ / 明文入口**不是完全独立的冗余节点**，本项目只保留必要的协议级冗余，不靠堆数量提高可用性。
+- 按「国内加速 DNS 使用加密 DNS」要求，移除 `180.184.1.1` 与 `223.5.5.5` 两条**明文 UDP** 上游，全部替换为 DoH / DoT 端点；火山引擎 PublicDNS [官方 FAQ](https://volcengine.com/docs/TrafficRouteDNSSuite/FAQs-2?lang=zh) 明确仅支持 UDP/TCP 明文，不纳入；
+- 候选端点参考 [dns.icoa.cn 国内](https://dns.icoa.cn/)、[海外](https://dns.icoa.cn/world/)、[教育网](https://dns.icoa.cn/edu/) 三页，最终以三轮实测结果为准；
+- 实测发现 `1.12.12.12`、`120.53.53.53` 的**明文 UDP 不通但 DoH 可用**（只提供加密服务），因此 `120.53.53.53` 以 IP 版 DoH 纳入；`1.12.12.12` 因页面标注旧 IP 版 DoH 停用而暂不纳入；
+- 教育网 `101.6.6.6:8443` DoH 与 OneDNS `doh-pure.onedns.net` 两轮均超时，未纳入；
+- `tls://1.1.1.1` 属全球默认上游（853 通、443 的 DoH 不通），不属于国内加速组。
+
+> 同一服务商的 DoH / DoT / 多 IP 入口**不是完全独立的冗余节点**，这里只是接入级冗余；`load_balance` 每次查询只选一条上游，不会因 9 条端点放大 9 倍请求，但混入不可达端点仍会拖慢故障切换，故只保留实测全通的端点。
 
 ### 3. 自定义直连域名 (`config/domain_custom.txt`)
 
+后缀匹配优先：默认配置里所有域名都写成**带前导点**的形式，编译器输出 `[/域名/]`，匹配域名本身及全部子域。
+
 ```text
-# 不带点 = 精确匹配，带前导点 = 后缀匹配（含域名本身及全部子域）
-xoyo.com
-calatopia.com
-kurogames.com
-wegame.com.cn
-3gppnetwork.org
-ugreengroup.com
-wanmei.com
+# 原有直连域名（统一改为后缀匹配）
+.xoyo.com
+.calatopia.com
+.wegame.com.cn
+.3gppnetwork.org
+.ugreengroup.com
+
+# 完美世界 / 异环
+.wanmei.com
+.perfectworld.com
+# 原神
+.mihoyo.com
+.hoyoverse.com
+.yuanshen.com
+# 深空之眼
+.ys4fun.com
+.aethergazer.com
+# 少女前线2：追放
+.sunborngame.com
+# 库洛游戏 / 鸣潮
+.kurogames.com
+# 明日方舟：终末地
+.hypergryph.com
+.skland.com
+# 蓝色星原：旅谣
+.manjuu.com
+# 白银之城
+.silverpalace.cn
+.elementagames.com
+# 无限大（只收 ananta 子域，不放大到整个 163.com）
+.ananta.163.com
 ```
+
+游戏域名均经官网 / 官方公告核实并验证可解析，一手来源包括：`yh.wanmei.com`（异环国服）、`nte.perfectworld.com`（异环国际服）、`ys.mihoyo.com`（原神国服）、`skzy.ys4fun.com`（深空之眼）、`gf2.sunborngame.com`（少女前线2）、`mc.kurogames.com`（鸣潮）、`endfield.hypergryph.com`（终末地）、`azurpromilia.manjuu.com`（蓝色星原）、`www.silverpalace.cn`（白银之城）、`ananta.163.com`（无限大）。`库洛游戏` 与 `鸣潮` 共用 `kurogames.com`，`完美世界` 与 `异环` 共用 `wanmei.com` / `perfectworld.com`，已合并去重。
+
+> 保留的 3 个原有域名 `calatopia.com`、`3gppnetwork.org`、`ugreengroup.com` 在当前网络下解析失败，可能是内网 / 已停用域名；未擅自删除，请按需确认。
 
 自定义域名逐行输出、优先级体现在「先写入且在线规则跳过同名域名」。注意所有域名最终都指向同一组国内上游，因此「优先级」只影响可读性，不会改变解析路径。
 
@@ -301,15 +352,32 @@ wanmei.com
 | `parallel` | 并发向组内**所有**上游各发一次，取最先返回的成功响应 | N× |
 | `fastest_addr` | 并发查询所有上游，再对**应答中返回的 IP 地址**做延迟探测，返回延迟最低的 IP（不是给上游打分） | N× + TCP 探测 |
 
-> 「并发取最快响应」对应 `parallel`；`fastest_addr` 是对**解析结果 IP** 测速，且会产生额外探测流量。本产物每组 6 个国内上游，设为 `parallel` / `fastest_addr` 会让国内域名上游请求量放大 6 倍，公共 DoH 有速率限制风险。**默认 `load_balance` 是更稳妥的选择**。
+> 「并发取最快响应」对应 `parallel`；`fastest_addr` 是对**解析结果 IP** 测速，且会产生额外探测流量。本产物每组 9 个国内上游，设为 `parallel` / `fastest_addr` 会让国内域名上游请求量放大 9 倍，公共 DoH 有速率限制风险。**默认 `load_balance` 是更稳妥的选择**。
 >
 > `load_balance` 遇到不可达上游会先等它超时才切换，所以组里混入「根本连不上」的上游会明显拖慢解析——这正是本项目精简上游清单的原因。
 
 ### Bootstrap DNS 与可达性
 
-- `tls://1.1.1.1`、`180.184.1.1`、`223.5.5.5` 等 **IP 直连上游不需要 Bootstrap**；
-- `https://dns.alidns.com/dns-query`、`https://doh.pub/dns-query`、`tls://dot.pub` 等域名形式上游必须先经 `bootstrap_dns` 解析主机名；
-- 中国大陆网络下，用国内 Bootstrap 解析境外 DNS 主机名存在被污染风险。建议同时配置国内外 Bootstrap（如上面的示例），并优先启用 IP 直连端点。
+域名形式的加密上游（`dns.alidns.com`、`doh.pub`、`dot.pub`、`doh.360.cn`、`dot.360.cn`）必须先经 `bootstrap_dns` 解析主机名；IP 形式 DoH（`223.5.5.5`、`223.6.6.6`、`120.53.53.53`）与 IP 直连 DoT（`tls://1.1.1.1`）**不需要 Bootstrap**。
+
+按「Bootstrap 多添加几个」的要求，示例已从 4 个扩充为 **8 个**，均经三轮 A/AAAA 实测可用，并按服务商分散故障域：
+
+| Bootstrap | 服务商 | 平均 A RTT | 角色 |
+| :--- | :--- | ---: | :--- |
+| `223.5.5.5` | 阿里云 | 5.8 ms | 国内主用 |
+| `119.29.29.29` | 腾讯云 DNSPod | 27.4 ms | 国内主用 |
+| `114.114.114.114` | 114DNS | 24.0 ms | 国内备用 |
+| `180.76.76.76` | 百度 | 11.6 ms | 国内备用 |
+| `1.2.4.8` | CNNIC | 35.6 ms | 国内备用 |
+| `123.125.81.6` | 联通 | 4.4 ms | 国内备用 |
+| `1.1.1.1` | Cloudflare | 83.7 ms | 境外兜底 |
+| `9.9.9.9` | Quad9 | 132.2 ms | 境外兜底 |
+
+实测数据见 `output/dns_round1.json`、`output/dns_round2.json`、`output/dns_round3.json`（分别查询 `www.baidu.com`、`www.qq.com`、`github.com`）。三点注意：
+
+- AdGuard Home 会并发向所有 `bootstrap_dns` 查询并取最快响应，因此多配几个不会线性放大延迟，但也不宜堆到十几个；
+- 中国大陆网络下用国内 Bootstrap 解析境外 DNS 主机名存在被污染风险，故保留 2 个境外兜底；
+- 明文 UDP 的 `1.12.12.12`、`120.53.53.53` 三轮均超时（只提供 DoH），**不要**写进 `bootstrap_dns`。
 
 ### IPv4 / IPv6、CNAME、DNSSEC
 
@@ -393,7 +461,7 @@ python3 tools/test_upstreams.py tools/endpoints.txt  # 上游连通性 / TLS 证
 <details>
 <summary><strong>Q: 为什么我的 <code>example.com</code> 自定义域名把子域名也带走了？</strong></summary>
 
-> 见 [规则语义](#semantics)：AdGuard Home 无精确匹配语法，不带点的写法默认被扩大为后缀匹配。可用 `--exact-match-policy skip` 关闭该行为，或改用 `.example.com` 显式表达后缀匹配。
+> 见 [规则语义](#semantics)：AdGuard Home 无精确匹配语法，项目采用后缀匹配优先，不带点的写法默认统一转为后缀匹配。可用 `--exact-match-policy skip` 关闭该行为，或（推荐）改用 `.example.com` 显式表达后缀匹配。
 
 </details>
 

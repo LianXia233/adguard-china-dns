@@ -9,8 +9,9 @@
 //!   - `[/*.example.com/]upstream` = 仅子域（不含根域名）
 //!
 //! 因此后缀匹配可**无损**转换；精确匹配在 AdGuard Home 的上游文件里
-//! **没有对应语义**，只能扩大为后缀匹配或跳过，二者都必须显式统计与告警，
-//! 不允许静默发生。
+//! **没有对应语义**，只能扩大为后缀匹配或跳过，二者都必须显式统计与说明，
+//! 不允许静默发生。本项目采用「后缀匹配优先」策略（默认 Expand），
+//! 即统一扩大为后缀匹配并完整记录数量与样本；Skip 仅供需要严格语义时使用。
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -47,12 +48,12 @@ impl RuleKind {
     }
 }
 
-/// 精确匹配规则的处理策略。
+/// 精确匹配规则的处理策略。项目默认「后缀匹配优先」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExactPolicy {
-    /// 扩大为后缀匹配（保持现有分流覆盖面），但强制输出统计与告警
+    /// 扩大为后缀匹配（后缀匹配优先，保持分流覆盖面），显式输出统计与样本
     Expand,
-    /// 跳过，不写入产物（同样强制输出统计与样本）
+    /// 跳过，不写入产物（同样显式输出统计与样本）
     Skip,
 }
 
@@ -409,8 +410,8 @@ fn classify(lower: &str) -> (&str, RuleKind) {
 
 /// 清洗整个文件，收集域名与统计。
 ///
-/// `exact_policy` 决定精确匹配规则如何落地：
-///  - Expand：写入域名，但计入 `expanded_exact` 并强制提示（语义扩大）
+/// `exact_policy` 决定精确匹配规则如何落地（默认「后缀匹配优先」）：
+///  - Expand：写入域名，计入 `expanded_exact` 并输出样本（语义扩大，已显式记录）
 ///  - Skip：跳过，计入 `skipped_exact` 并保留样本
 pub fn process_file(
     content: &str,

@@ -79,8 +79,12 @@ dns:
   bootstrap_dns:
     - 223.5.5.5
     - 119.29.29.29
+    - 114.114.114.114
+    - 180.76.76.76
+    - 1.2.4.8
+    - 123.125.81.6
     - 1.1.1.1
-    - 8.8.8.8
+    - 9.9.9.9
   upstream_mode: load_balance
 """
     with open(path, "w", encoding="utf-8") as f:
