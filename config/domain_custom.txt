@@ -14,6 +14,16 @@
 # 完美世界 / 异环（国服 yh.wanmei.com；国际服 nte.perfectworld.com）
 .wanmei.com
 .perfectworld.com
+# 完美世界登录 / 账号 / 支付 SDK（wos.laohu.com、wos.pwsdk.com）
+.laohu.com
+.pwsdk.com
+# 异环资源 CDN / 补丁 / 社区 / 家具上传（yhcdn1/2.wmupd.com 等）
+.wmupd.com
+# 异环台服发行（yhgot-furnishing.iwplay.com.tw）
+.iwplay.com.tw
+# Hotta Studio 官网 / 崩溃上报（www.hottagames.com、dlog.perfectworldgames.com）
+.hottagames.com
+.perfectworldgames.com
 # 原神（米哈游 / HoYoverse；国服 ys.mihoyo.com、dispatch 走 yuanshen.com）
 .mihoyo.com
 .hoyoverse.com

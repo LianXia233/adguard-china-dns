@@ -1,5 +1,13 @@
 # Changelog
 
+## 未发布 (2026-11-24) — 异环（NTE）直连域名补充
+
+### 自定义域名（游戏）
+- 在 `config/domain_custom.txt` 的「完美世界 / 异环」分组补充：`.wmupd.com`（资源 CDN / 补丁 / 社区）、`.laohu.com` / `.pwsdk.com`（完美世界登录/账号 SDK）、`.iwplay.com.tw`（台服发行）、`.hottagames.com`（Hotta Studio 官网）、`.perfectworldgames.com`（崩溃上报）。
+- 以上域名均由异环 PC 客户端二进制与运行日志核实（`yhcdn1.wmupd.com`、`wos.laohu.com`、`wos.pwsdk.com`、`yhgot-furnishing.iwplay.com.tw`、`www.hottagames.com`、`dlog.perfectworldgames.com`）；README 域名清单与一手来源说明同步更新。
+
+> 本条为自定义域名清单补充，不改变上游/DNS 策略；产物需等下一次定时构建或手动触发。
+
 ## 未发布 (2026-11-12) — CI：GitHub Actions 升级至 Node 24 运行时
 
 > 本条仅记录 CI 配置变更，不对应新的规则版本或产物版本，`Cargo.toml` 版本未改动。

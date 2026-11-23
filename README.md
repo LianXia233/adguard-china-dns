@@ -308,9 +308,19 @@ tls://dot.360.cn
 .3gppnetwork.org
 .ugreengroup.com
 
-# 完美世界 / 异环
+# 完美世界 / 异环（国服 yh.wanmei.com；国际服 nte.perfectworld.com）
 .wanmei.com
 .perfectworld.com
+# 完美世界登录 / 账号 / 支付 SDK（wos.laohu.com、wos.pwsdk.com）
+.laohu.com
+.pwsdk.com
+# 异环资源 CDN / 补丁 / 社区 / 家具上传（yhcdn1/2.wmupd.com 等）
+.wmupd.com
+# 异环台服发行（yhgot-furnishing.iwplay.com.tw）
+.iwplay.com.tw
+# Hotta Studio 官网 / 崩溃上报（www.hottagames.com、dlog.perfectworldgames.com）
+.hottagames.com
+.perfectworldgames.com
 # 原神
 .mihoyo.com
 .hoyoverse.com
@@ -334,7 +344,7 @@ tls://dot.360.cn
 .ananta.163.com
 ```
 
-游戏域名均经官网 / 官方公告核实并验证可解析，一手来源包括：`yh.wanmei.com`（异环国服）、`nte.perfectworld.com`（异环国际服）、`ys.mihoyo.com`（原神国服）、`skzy.ys4fun.com`（深空之眼）、`gf2.sunborngame.com`（少女前线2）、`mc.kurogames.com`（鸣潮）、`endfield.hypergryph.com`（终末地）、`azurpromilia.manjuu.com`（蓝色星原）、`www.silverpalace.cn`（白银之城）、`ananta.163.com`（无限大）。`库洛游戏` 与 `鸣潮` 共用 `kurogames.com`，`完美世界` 与 `异环` 共用 `wanmei.com` / `perfectworld.com`，已合并去重。
+游戏域名均经官网 / 官方公告核实并验证可解析，一手来源包括：`yh.wanmei.com`（异环国服）、`nte.perfectworld.com`（异环国际服）、`wos.laohu.com` / `wos.pwsdk.com`（完美世界登录/账号 SDK）、`yhcdn1.wmupd.com`（异环资源 CDN/补丁）、`yhgot-furnishing.iwplay.com.tw`（异环台服）、`www.hottagames.com`（Hotta Studio 官网）、`dlog.perfectworldgames.com`（崩溃上报）、`ys.mihoyo.com`（原神国服）、`skzy.ys4fun.com`（深空之眼）、`gf2.sunborngame.com`（少女前线2）、`mc.kurogames.com`（鸣潮）、`endfield.hypergryph.com`（终末地）、`azurpromilia.manjuu.com`（蓝色星原）、`www.silverpalace.cn`（白银之城）、`ananta.163.com`（无限大）。`库洛游戏` 与 `鸣潮` 共用 `kurogames.com`；`完美世界` 与 `异环` 共用 `wanmei.com` / `perfectworld.com`，并补充 `wmupd.com`（CDN/补丁/社区）、`laohu.com` / `pwsdk.com`（SDK）、`iwplay.com.tw`（台服）等专用域名，已合并去重。
 
 > 保留的 3 个原有域名 `calatopia.com`、`3gppnetwork.org`、`ugreengroup.com` 在当前网络下解析失败，可能是内网 / 已停用域名；未擅自删除，请按需确认。
 
